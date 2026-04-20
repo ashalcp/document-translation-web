@@ -12,19 +12,32 @@ interface Settings {
 const SETTINGS_PATH = path.join(os.homedir(), '.document-translation-web', 'settings.json')
 
 const DEFAULTS: Settings = {
-  azureDocIntelEndpoint: '',
-  azureDocIntelKey: '',
-  azureTranslatorKey: '',
-  azureTranslatorRegion: 'eastus'
+  azureDocIntelEndpoint: process.env.AZURE_DOC_INTEL_ENDPOINT || '',
+  azureDocIntelKey: process.env.AZURE_DOC_INTEL_KEY || '',
+  azureTranslatorKey: process.env.AZURE_TRANSLATOR_KEY || '',
+  azureTranslatorRegion: process.env.AZURE_TRANSLATOR_REGION || 'eastus'
 }
 
 export function getSettings(): Settings {
+  // Always merge env vars so Azure App Service settings take priority
+  const envSettings: Settings = {
+    azureDocIntelEndpoint: process.env.AZURE_DOC_INTEL_ENDPOINT || '',
+    azureDocIntelKey: process.env.AZURE_DOC_INTEL_KEY || '',
+    azureTranslatorKey: process.env.AZURE_TRANSLATOR_KEY || '',
+    azureTranslatorRegion: process.env.AZURE_TRANSLATOR_REGION || 'eastus'
+  }
   try {
     if (fs.existsSync(SETTINGS_PATH)) {
-      return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8')) }
+      const fileSettings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf-8'))
+      // env vars take priority over file settings
+      return {
+        ...DEFAULTS,
+        ...fileSettings,
+        ...(envSettings.azureDocIntelKey ? envSettings : {})
+      }
     }
   } catch {}
-  return { ...DEFAULTS }
+  return { ...DEFAULTS, ...envSettings }
 }
 
 export function saveSettings(patch: Partial<Settings>): void {
