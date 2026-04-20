@@ -16,6 +16,12 @@ export interface TranslatedParagraph {
 
 export type JobStatus = 'ocr-running' | 'ocr-done' | 'translating' | 'done' | 'error'
 
+export interface Translation {
+  paragraphs: TranslatedParagraph[]
+  confidence: number
+  languageName: string // e.g. "Spanish"
+}
+
 export interface Job {
   id: string
   fileName: string
@@ -25,10 +31,13 @@ export interface Job {
   ocrParagraphs: OCRParagraph[]
   overallOCRConfidence: number
   pageCount: number
+  // legacy single translation (kept for compat)
   translatedParagraphs: TranslatedParagraph[]
   overallTranslationConfidence: number
   translateProgress: number
   selectedLanguage: string
+  // multi-translation map: langCode → Translation
+  translations: Record<string, Translation>
   error: string | null
 }
 
@@ -58,6 +67,7 @@ export const useAppStore = create<AppState>((set) => ({
       overallTranslationConfidence: 0,
       translateProgress: 0,
       selectedLanguage: 'es',
+      translations: {},
       error: null
     }
     set(state => ({ jobs: [...state.jobs, job], activeJobId: id }))

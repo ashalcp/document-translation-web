@@ -6,12 +6,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).href
 
-interface Props { fileData: string } // base64 PDF
+interface Props {
+  fileData: string // base64 PDF
+  currentPage: number
+  onPageChange: (page: number) => void
+}
 
-export default function PDFViewer({ fileData }: Props) {
+export default function PDFViewer({ fileData, currentPage, onPageChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [totalPages, setTotalPages] = useState(0)
-  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pdfRef = useRef<any>(null)
@@ -31,7 +34,7 @@ export default function PDFViewer({ fileData }: Props) {
       .then((pdf: any) => {
         pdfRef.current = pdf
         setTotalPages(pdf.numPages)
-        setPage(1)
+        onPageChange(1)
         setLoading(false)
         renderPage(pdf, 1)
       })
@@ -43,8 +46,8 @@ export default function PDFViewer({ fileData }: Props) {
 
   useEffect(() => {
     if (isInitialLoad.current) { isInitialLoad.current = false; return }
-    if (pdfRef.current) renderPage(pdfRef.current, page)
-  }, [page])
+    if (pdfRef.current) renderPage(pdfRef.current, currentPage)
+  }, [currentPage])
 
   const renderPage = async (pdf: any, pageNum: number) => {
     if (renderTaskRef.current) {
@@ -72,10 +75,10 @@ export default function PDFViewer({ fileData }: Props) {
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between bg-gray-800 px-3 py-2 text-sm text-white">
         <button className="px-2 py-1 bg-gray-700 rounded disabled:opacity-40"
-          disabled={page <= 1 || loading} onClick={() => setPage(p => p - 1)}>◀</button>
-        <span>{loading ? 'Loading...' : `Page ${page} / ${totalPages}`}</span>
+          disabled={currentPage <= 1 || loading} onClick={() => onPageChange(currentPage - 1)}>◀</button>
+        <span>{loading ? 'Loading...' : `Page ${currentPage} / ${totalPages}`}</span>
         <button className="px-2 py-1 bg-gray-700 rounded disabled:opacity-40"
-          disabled={page >= totalPages || loading} onClick={() => setPage(p => p + 1)}>▶</button>
+          disabled={currentPage >= totalPages || loading} onClick={() => onPageChange(currentPage + 1)}>▶</button>
       </div>
       <div className="flex-1 overflow-auto bg-gray-900 flex justify-center items-center p-2">
         {error ? (
