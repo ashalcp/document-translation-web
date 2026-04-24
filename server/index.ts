@@ -67,6 +67,7 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
     fs.unlinkSync(file.path)
     res.json(result)
   } catch (e: any) {
+    console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
     res.status(500).json({ error: e.message })
   }
@@ -117,11 +118,13 @@ app.get('/api/languages', async (_req, res) => {
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
   const { paragraphs, title } = req.body
-  const outPath = path.join(os.tmpdir(), `${title}-${Date.now()}.pdf`)
+  const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
+  const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
     await exportToPDF(paragraphs, outPath, title)
-    res.download(outPath, `${title}.pdf`, () => fs.unlinkSync(outPath))
+    res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
+    console.error('PDF export error:', e.message, e.stack)
     res.status(500).json({ error: e.message })
   }
 })
@@ -129,11 +132,13 @@ app.post('/api/export/pdf', async (req, res) => {
 // ─── Export Word ──────────────────────────────────────────────────────────────
 app.post('/api/export/word', async (req, res) => {
   const { paragraphs, title } = req.body
-  const outPath = path.join(os.tmpdir(), `${title}-${Date.now()}.docx`)
+  const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
+  const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.docx`)
   try {
     await exportToWord(paragraphs, outPath, title)
-    res.download(outPath, `${title}.docx`, () => fs.unlinkSync(outPath))
+    res.download(outPath, `${title}.docx`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
+    console.error('Word export error:', e.message, e.stack)
     res.status(500).json({ error: e.message })
   }
 })
