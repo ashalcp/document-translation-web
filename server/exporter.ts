@@ -1,11 +1,7 @@
-import { PDFDocument, rgb } from 'pdf-lib'
-import * as fontkit from '@pdf-lib/fontkit'
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import { Document, Packer, Paragraph as DocxParagraph, TextRun, AlignmentType } from 'docx'
 import * as fs from 'fs'
 import * as path from 'path'
-
-const FONT_REGULAR = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
-const FONT_BOLD = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
 
 export async function exportToPDF(
   paragraphs: Array<{ text: string; boundingBox?: number[]; pageNumber?: number }>,
@@ -16,12 +12,9 @@ export async function exportToPDF(
   originalPdfPath?: string
 ): Promise<void> {
   const doc = await PDFDocument.create()
-  doc.registerFontkit(fontkit as any)
   
-  const fontRegularBytes = fs.readFileSync(FONT_REGULAR)
-  const fontBoldBytes = fs.readFileSync(FONT_BOLD)
-  const fontRegular = await doc.embedFont(fontRegularBytes)
-  const fontBold = await doc.embedFont(fontBoldBytes)
+  const fontRegular = await doc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold)
 
   const fontSize = 11
   const margin = 50
