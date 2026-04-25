@@ -19,7 +19,6 @@ export async function exportToPDF(
   
   let fontRegular: any
   let fontBold: any
-  let useUnicodeFonts = false
 
   // Try to load Unicode fonts, fall back to standard fonts if they fail
   try {
@@ -29,7 +28,6 @@ export async function exportToPDF(
       const fontBoldBytes = fs.readFileSync(FONT_BOLD)
       fontRegular = await doc.embedFont(fontRegularBytes, { subset: true })
       fontBold = await doc.embedFont(fontBoldBytes, { subset: true })
-      useUnicodeFonts = true
       console.log('Successfully loaded Unicode fonts with subsetting')
     } else {
       throw new Error('Font files not found')
@@ -87,8 +85,13 @@ export async function exportToPDF(
     drawText(para.text, fontRegular, fontSize)
   }
 
-  const pdfBytes = await doc.save()
-  fs.writeFileSync(outputPath, pdfBytes)
+  // Save with compatibility options
+  const pdfBytes = await doc.save({
+    useObjectStreams: false,  // Better compatibility with older PDF readers
+    addDefaultPage: false,
+    objectsPerTick: 50
+  })
+  fs.writeFileSync(outputPath, pdfBytes, { encoding: 'binary' })
 }
 
 export async function exportToWord(

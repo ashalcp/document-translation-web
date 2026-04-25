@@ -6,7 +6,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { getSettings, saveSettings } from './settings'
-import { runOCR } from './ocr-service'
+import { runOCR, getSearchablePDF } from './ocr-service'
 import { translateParagraphs, getSupportedLanguages } from './translator-service'
 import { exportToPDF, exportToWord, exportToJSON } from './exporter'
 
@@ -84,8 +84,18 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     
+    // Get searchable PDF from Azure (official API)
+    let searchablePdfPath: string | undefined
+    try {
+      console.log('Requesting Azure searchable PDF...')
+      searchablePdfPath = await getSearchablePDF(originalPdfPath, settings.azureDocIntelEndpoint, settings.azureDocIntelKey)
+      console.log('Searchable PDF received:', searchablePdfPath)
+    } catch (pdfErr: any) {
+      console.warn('Failed to get searchable PDF, will use original:', pdfErr.message)
+    }
+    
     fs.unlinkSync(file.path)
-    res.json({ ...result, pdfPath: originalPdfPath })
+    res.json({ ...result, originalPdfPath, searchablePdfPath })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -137,7 +147,21 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  const { paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
+  const { searchablePdfPath } = req.body
+  
+  // If we have Azure's searchable PDF, send it directly
+  if (searchablePdfPath && fs.existsSync(searchablePdfPath)) {
+    console.log('Sending Azure searchable PDF directly')
+    const filename = `${req.body.title || 'document'}.pdf`
+    res.download(searchablePdfPath, filename, (err) => {
+      if (err) console.error('Download error:', err)
+      // Keep the file for potential re-downloads
+    })
+    return
+  }
+  
+  // Fallback to generating PDF (shouldn't happen if searchable PDF exists)
+  const { paragraphs, title } = req.body
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
@@ -145,9 +169,9 @@ app.post('/api/export/pdf', async (req, res) => {
       paragraphs,
       outPath,
       title,
-      preserveLayout !== false, // default to true
-      pageCount || 1,
-      originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : undefined
+      false, // Simple flow mode as fallback
+      1,
+      undefined
     )
     res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
