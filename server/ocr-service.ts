@@ -108,8 +108,7 @@ export async function getSearchablePDF(
   return new Promise((resolve, reject) => {
     const pdfBytes = fs.readFileSync(filePath)
     const apiVersion = '2024-11-30'
-    // Enable font/style detection with features parameter
-    const url = new URL(`${endpoint}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=${apiVersion}&output=pdf&features=styleFont`)
+    const url = new URL(`${endpoint}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=${apiVersion}&output=pdf`)
     
     const options = {
       method: 'POST',
@@ -120,16 +119,19 @@ export async function getSearchablePDF(
       }
     }
 
-    console.log('Starting searchable PDF analysis with font/style detection...')
+    console.log('[Searchable PDF] Starting analysis...')
+    console.log('[Searchable PDF] URL:', url.toString())
     const protocol = url.protocol === 'https:' ? https : http
     const req = protocol.request(url, options, (res) => {
+      console.log('[Searchable PDF] Initial response status:', res.statusCode)
+      
       if (res.statusCode === 202) {
         const operationLocation = res.headers['operation-location'] as string
         if (!operationLocation) {
           return reject(new Error('No operation-location header in response'))
         }
 
-        console.log('Analysis started, polling for completion...')
+        console.log('[Searchable PDF] Operation location:', operationLocation)
         
         // Poll for completion
         const pollInterval = setInterval(() => {
@@ -145,26 +147,35 @@ export async function getSearchablePDF(
             pollRes.on('end', () => {
               try {
                 const result = JSON.parse(data)
+                console.log('[Searchable PDF] Poll status:', result.status)
+                
                 if (result.status === 'succeeded') {
                   clearInterval(pollInterval)
-                  console.log('Analysis succeeded, downloading searchable PDF...')
+                  console.log('[Searchable PDF] Analysis succeeded!')
                   
                   // Extract result ID from operation location
-                  const resultId = operationLocation.split('/analyzeResults/')[0].split('/').pop()
+                  // Format: {endpoint}/documentintelligence/documentModels/prebuilt-read/analyzeResults/{resultId}
+                  const resultId = operationLocation.split('/analyzeResults/')[1]
                   const pdfUrl = `${endpoint}/documentintelligence/documentModels/prebuilt-read/analyzeResults/${resultId}/pdf?api-version=${apiVersion}`
+                  
+                  console.log('[Searchable PDF] Result ID:', resultId)
+                  console.log('[Searchable PDF] Download URL:', pdfUrl)
                   
                   downloadSearchablePDF(pdfUrl, apiKey, resolve, reject)
                 } else if (result.status === 'failed') {
                   clearInterval(pollInterval)
+                  console.error('[Searchable PDF] Analysis failed:', result.error)
                   reject(new Error(result.error?.message || 'Analysis failed'))
                 }
               } catch (e) {
                 clearInterval(pollInterval)
+                console.error('[Searchable PDF] Polling error:', e)
                 reject(e)
               }
             })
           }).on('error', (e) => {
             clearInterval(pollInterval)
+            console.error('[Searchable PDF] Request error:', e)
             reject(e)
           }).end()
         }, 2000)
@@ -172,12 +183,16 @@ export async function getSearchablePDF(
         let errorData = ''
         res.on('data', chunk => errorData += chunk)
         res.on('end', () => {
+          console.error('[Searchable PDF] Unexpected status:', res.statusCode, errorData)
           reject(new Error(`Unexpected status code ${res.statusCode}: ${errorData}`))
         })
       }
     })
 
-    req.on('error', reject)
+    req.on('error', (err) => {
+      console.error('[Searchable PDF] Request error:', err)
+      reject(err)
+    })
     req.write(pdfBytes)
     req.end()
   })
@@ -198,23 +213,37 @@ function downloadSearchablePDF(
   const outputPath = path.join(os.tmpdir(), `searchable-${Date.now()}.pdf`)
   const protocol = parsedUrl.protocol === 'https:' ? https : http
   
+  console.log('[Searchable PDF] Downloading from:', url)
+  
   protocol.request(parsedUrl, options, (res) => {
+    console.log('[Searchable PDF] Download response status:', res.statusCode)
+    console.log('[Searchable PDF] Content-Type:', res.headers['content-type'])
+    
     if (res.statusCode !== 200) {
       let errorData = ''
       res.on('data', chunk => errorData += chunk)
       res.on('end', () => {
+        console.error('[Searchable PDF] Download failed:', errorData)
         reject(new Error(`Failed to download PDF (${res.statusCode}): ${errorData}`))
       })
       return
     }
 
-    const writeStream = fs.createWriteStream(outputPath)
+    const writeStream = fs.createWriteStream(outputPath, { encoding: 'binary' })
     res.pipe(writeStream)
     writeStream.on('finish', () => {
       writeStream.close()
-      console.log('Searchable PDF downloaded successfully:', outputPath)
+      const stats = fs.statSync(outputPath)
+      console.log('[Searchable PDF] Downloaded successfully:', outputPath)
+      console.log('[Searchable PDF] File size:', stats.size, 'bytes')
       resolve(outputPath)
     })
-    writeStream.on('error', reject)
-  }).on('error', reject).end()
+    writeStream.on('error', (err) => {
+      console.error('[Searchable PDF] Write error:', err)
+      reject(err)
+    })
+  }).on('error', (err) => {
+    console.error('[Searchable PDF] Download request error:', err)
+    reject(err)
+  }).end()
 }
