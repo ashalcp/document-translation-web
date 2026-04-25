@@ -6,7 +6,8 @@
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "npx ts-node --project tsconfig.server.json server/index.ts",
     "client": "vite",
-    "build": "vite build && npx tsc -p tsconfig.server.json",
+    "build": "vite build && npx tsc -p tsconfig.server.json && npm run copy-fonts",
+    "copy-fonts": "mkdir -p dist-server/fonts && cp server/fonts/*.ttf dist-server/fonts/",
     "start": "node dist-server/index.js",
     "preview": "vite preview"
   },

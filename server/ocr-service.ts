@@ -155,8 +155,12 @@ export async function getSearchablePDF(
                   console.log('[Searchable PDF] Analysis succeeded!')
                   
                   // Extract result ID from operation location
-                  // Format: {endpoint}/documentintelligence/documentModels/prebuilt-read/analyzeResults/{resultId}
-                  const resultId = operationLocation.split('/analyzeResults/')[1]
+                  // Format: {endpoint}/documentintelligence/documentModels/prebuilt-read/analyzeResults/{resultId}?api-version=xxx
+                  const match = operationLocation.match(/\/analyzeResults\/([a-f0-9-]+)/i)
+                  if (!match) {
+                    return reject(new Error('Could not extract result ID from operation location'))
+                  }
+                  const resultId = match[1]
                   const pdfUrl = `${endpoint}/documentintelligence/documentModels/prebuilt-read/analyzeResults/${resultId}/pdf?api-version=${apiVersion}`
                   
                   console.log('[Searchable PDF] Result ID:', resultId)

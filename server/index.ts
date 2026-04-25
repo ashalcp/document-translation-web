@@ -84,21 +84,18 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     
-    // TODO: Azure searchable PDF has 404 error - endpoint format may have changed
-    // Temporarily disabled until we debug the correct endpoint
-    /*
+    // Get searchable PDF from Azure (with fixed URL generation)
     let searchablePdfPath: string | undefined
     try {
       console.log('Requesting Azure searchable PDF...')
       searchablePdfPath = await getSearchablePDF(originalPdfPath, settings.azureDocIntelEndpoint, settings.azureDocIntelKey)
       console.log('Searchable PDF received:', searchablePdfPath)
     } catch (pdfErr: any) {
-      console.warn('Failed to get searchable PDF, will use original:', pdfErr.message)
+      console.warn('Failed to get searchable PDF, will use pdf-lib fallback:', pdfErr.message)
     }
-    */
     
     fs.unlinkSync(file.path)
-    res.json({ ...result, originalPdfPath })
+    res.json({ ...result, originalPdfPath, searchablePdfPath })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -150,9 +147,20 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  // Azure searchable PDF temporarily disabled due to 404 endpoint error
-  // Using pdf-lib generation with Unicode fonts
-  const { paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
+  const { searchablePdfPath, paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
+  
+  // If we have Azure's searchable PDF, send it directly
+  if (searchablePdfPath && fs.existsSync(searchablePdfPath)) {
+    console.log('Sending Azure searchable PDF directly')
+    const filename = `${title || 'document'}.pdf`
+    res.download(searchablePdfPath, filename, (err) => {
+      if (err) console.error('Download error:', err)
+    })
+    return
+  }
+  
+  // Fallback: Generate PDF with pdf-lib (with Unicode fonts now working)
+  console.log('Generating PDF with pdf-lib (fonts should load now)')
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
