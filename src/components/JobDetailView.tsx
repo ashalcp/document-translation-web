@@ -230,10 +230,16 @@ export default function JobDetailView({ job }: { job: Job }) {
         {/* Export + accuracy on the right */}
         <div className="ml-auto flex items-center gap-2">
           {(job.status === 'ocr-done' || job.status === 'done') && (
-            <div className="flex items-center gap-1">
-              <span className="text-gray-500 text-xs">OCR</span>
-              <AccuracyBadge value={job.overallOCRConfidence} />
-            </div>
+            <>
+              <div className="flex items-center gap-1">
+                <span className="text-gray-500 text-xs">OCR</span>
+                <AccuracyBadge value={job.overallOCRConfidence} />
+              </div>
+              <button onClick={() => handleExport('json')}
+                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium">
+                ⬇ OCR
+              </button>
+            </>
           )}
           {(job.status === 'done') && (
             <>
@@ -244,10 +250,6 @@ export default function JobDetailView({ job }: { job: Job }) {
               <button onClick={() => handleExport('word')}
                 className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-medium">
                 ⬇ Word
-              </button>
-              <button onClick={() => handleExport('json')}
-                className="px-3 py-1 bg-yellow-700 hover:bg-yellow-800 text-white rounded-lg text-xs font-medium">
-                ⬇ JSON
               </button>
             </>
           )}
