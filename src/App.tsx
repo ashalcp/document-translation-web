@@ -3,6 +3,7 @@ import { useAppStore } from './store/appStore'
 import JobDetailView from './components/JobDetailView'
 import SettingsModal from './components/SettingsModal'
 import ProgressBar from './components/ProgressBar'
+import LoginPage from './pages/LoginPage'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   constructor(props: any) { super(props); this.state = { error: null } }
@@ -37,7 +38,58 @@ export default function App() {
   const { jobs, activeJobId, addJob, updateJob, setActiveJob, removeJob } = useAppStore()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [loginError, setLoginError] = useState<string>()
+  const [authChecked, setAuthChecked] = useState(false)
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null
+
+  // Check if auth is required on mount
+  useEffect(() => {
+    fetch('/api/auth/check')
+      .then(res => res.json())
+      .then(data => {
+        if (data.authRequired === false) {
+          setIsAuthenticated(true)
+        }
+        setAuthChecked(true)
+      })
+      .catch(() => {
+        setAuthChecked(true)
+      })
+  }, [])
+
+  const handleLogin = async (username: string, password: string) => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      
+      if (res.ok) {
+        setIsAuthenticated(true)
+        setLoginError(undefined)
+      } else {
+        setLoginError('Invalid username or password')
+      }
+    } catch (err) {
+      setLoginError('Login failed. Please try again.')
+    }
+  }
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} error={loginError} />
+  }
 
   // Subscribe to SSE progress for all jobs
   useEffect(() => {

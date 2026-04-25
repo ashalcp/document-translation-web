@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
-import basicAuth from 'express-basic-auth'
+import cookieParser from 'cookie-parser'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
@@ -13,21 +13,61 @@ import { exportToPDF, exportToWord, exportToJSON } from './exporter'
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Basic Auth (optional via env vars)
+// Auth configuration
 const AUTH_USER = process.env.AUTH_USERNAME
 const AUTH_PASS = process.env.AUTH_PASSWORD
+const authRequired = !!(AUTH_USER && AUTH_PASS)
 
-if (AUTH_USER && AUTH_PASS) {
-  app.use(basicAuth({
-    users: { [AUTH_USER]: AUTH_PASS },
-    challenge: true,
-    realm: 'Document Translation'
-  }))
-  console.log(`🔒 Basic auth enabled for user: ${AUTH_USER}`)
+// Session storage (in-memory, simple)
+const activeSessions = new Set<string>()
+
+app.use(cors({ credentials: true, origin: true }))
+app.use(express.json({ limit: '50mb' }))
+app.use(cookieParser())
+
+// Auth routes (no auth required for these)
+app.get('/api/auth/check', (_req, res) => {
+  res.json({ authRequired })
+})
+
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body
+  
+  if (!authRequired) {
+    return res.json({ success: true })
+  }
+  
+  if (username === AUTH_USER && password === AUTH_PASS) {
+    const sessionId = `session-${Date.now()}-${Math.random()}`
+    activeSessions.add(sessionId)
+    res.cookie('sessionId', sessionId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }) // 24h
+    res.json({ success: true })
+  } else {
+    res.status(401).json({ success: false, error: 'Invalid credentials' })
+  }
+})
+
+// Auth middleware for protected routes
+const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (!authRequired) {
+    return next()
+  }
+  
+  const sessionId = req.cookies?.sessionId
+  if (sessionId && activeSessions.has(sessionId)) {
+    return next()
+  }
+  
+  res.status(401).json({ error: 'Unauthorized' })
 }
 
-app.use(cors())
-app.use(express.json({ limit: '50mb' }))
+// Apply auth to all routes except /api/auth/*
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/auth/')) {
+    return next()
+  }
+  requireAuth(req, res, next)
+})
 
 // Temp upload dir
 const upload = multer({ dest: os.tmpdir() })
@@ -228,4 +268,9 @@ if (fs.existsSync(distPath)) {
 
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}`)
+  if (authRequired) {
+    console.log(`🔒 Authentication enabled - Username: ${AUTH_USER}`)
+  } else {
+    console.log(`🔓 No authentication required (set AUTH_USERNAME and AUTH_PASSWORD to enable)`)
+  }
 })
