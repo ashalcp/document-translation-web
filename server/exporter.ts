@@ -13,21 +13,13 @@ export async function exportToPDF(
   title: string,
   preserveLayout: boolean = false,
   totalPages: number = 1,
-  searchablePdfPath?: string,  // Azure's searchable PDF (preferred)
-  originalPdfPath?: string       // Fallback to original PDF
+  originalPdfPath?: string
 ): Promise<void> {
   let doc: PDFDocument
   
-  // Prefer Azure's searchable PDF if available, otherwise use original
-  const basePdfPath = (searchablePdfPath && fs.existsSync(searchablePdfPath)) 
-    ? searchablePdfPath 
-    : (originalPdfPath && fs.existsSync(originalPdfPath)) 
-      ? originalPdfPath 
-      : null
-  
-  // If we have a base PDF and want to preserve layout, load it and overlay translations
-  if (preserveLayout && basePdfPath) {
-    const originalBytes = fs.readFileSync(basePdfPath)
+  // If we have the original PDF and want to preserve layout, load it and overlay translations
+  if (preserveLayout && originalPdfPath && fs.existsSync(originalPdfPath)) {
+    const originalBytes = fs.readFileSync(originalPdfPath)
     doc = await PDFDocument.load(originalBytes)
     doc.registerFontkit(fontkit as any)
     

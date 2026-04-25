@@ -27,7 +27,6 @@ export default function JobDetailView({ job }: { job: Job }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [showLangSelector, setShowLangSelector] = useState(false)
   const [pendingLang, setPendingLang] = useState('es')
-  const [preserveLayout, setPreserveLayout] = useState(true)
 
   useEffect(() => {
     fetch('/api/languages').then(r => r.json()).then((langs: Language[]) => {
@@ -145,7 +144,6 @@ export default function JobDetailView({ job }: { job: Job }) {
         title,
         preserveLayout: type === 'pdf',
         pageCount: job.pageCount,
-        searchablePdfPath: job.searchablePdfPath,
         originalPdfPath: job.originalPdfPath
       })
     })
@@ -239,15 +237,6 @@ export default function JobDetailView({ job }: { job: Job }) {
           )}
           {(job.status === 'done') && (
             <>
-              <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={preserveLayout}
-                  onChange={e => setPreserveLayout(e.target.checked)}
-                  className="rounded"
-                />
-                Layout
-              </label>
               <button onClick={() => handleExport('pdf')}
                 className="px-3 py-1 bg-green-700 hover:bg-green-800 text-white rounded-lg text-xs font-medium">
                 ⬇ PDF

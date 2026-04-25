@@ -6,7 +6,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { getSettings, saveSettings } from './settings'
-import { runOCR, getSearchablePDF } from './ocr-service'
+import { runOCR } from './ocr-service'
 import { translateParagraphs, getSupportedLanguages } from './translator-service'
 import { exportToPDF, exportToWord, exportToJSON } from './exporter'
 
@@ -84,16 +84,6 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     
-    // Get Azure's searchable PDF with embedded OCR text
-    const searchablePdfPath = path.join(os.tmpdir(), `${jobId}_searchable.pdf`)
-    try {
-      await getSearchablePDF(file.path, settings.azureDocIntelEndpoint, settings.azureDocIntelKey, searchablePdfPath)
-      result.searchablePdfPath = searchablePdfPath
-    } catch (pdfErr) {
-      console.warn('Could not generate searchable PDF:', pdfErr)
-      // Continue anyway - we have the OCR results
-    }
-    
     fs.unlinkSync(file.path)
     res.json({ ...result, pdfPath: originalPdfPath })
   } catch (e: any) {
@@ -147,7 +137,7 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  const { paragraphs, title, preserveLayout, pageCount, searchablePdfPath, originalPdfPath } = req.body
+  const { paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
@@ -155,9 +145,8 @@ app.post('/api/export/pdf', async (req, res) => {
       paragraphs,
       outPath,
       title,
-      preserveLayout || false,
+      preserveLayout !== false, // default to true
       pageCount || 1,
-      searchablePdfPath && fs.existsSync(searchablePdfPath) ? searchablePdfPath : undefined,
       originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : undefined
     )
     res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
