@@ -108,7 +108,8 @@ export async function getSearchablePDF(
   return new Promise((resolve, reject) => {
     const pdfBytes = fs.readFileSync(filePath)
     const apiVersion = '2024-11-30'
-    const url = new URL(`${endpoint}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=${apiVersion}&output=pdf`)
+    // Enable searchable PDF output with font/style detection
+    const url = new URL(`${endpoint}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=${apiVersion}&output=pdf&features=styleFont`)
     
     const options = {
       method: 'POST',
@@ -119,7 +120,7 @@ export async function getSearchablePDF(
       }
     }
 
-    console.log('[Searchable PDF] Starting analysis...')
+    console.log('[Searchable PDF] Starting analysis with font/style detection...')
     console.log('[Searchable PDF] URL:', url.toString())
     const protocol = url.protocol === 'https:' ? https : http
     const req = protocol.request(url, options, (res) => {
