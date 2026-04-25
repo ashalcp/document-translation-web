@@ -4,8 +4,9 @@ import { Document, Packer, Paragraph as DocxParagraph, TextRun, AlignmentType } 
 import * as fs from 'fs'
 import * as path from 'path'
 
-const FONT_REGULAR = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
-const FONT_BOLD = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
+// Fonts are in server/fonts/, but after compilation they should be at the same level as dist-server/
+const FONT_REGULAR = path.join(__dirname, '../server/fonts/NotoSans-Regular.ttf')
+const FONT_BOLD = path.join(__dirname, '../server/fonts/NotoSans-Bold.ttf')
 
 export async function exportToPDF(
   paragraphs: Array<{ text: string; boundingBox?: number[]; pageNumber?: number }>,

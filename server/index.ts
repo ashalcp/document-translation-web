@@ -84,7 +84,9 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     
-    // Get searchable PDF from Azure (official API)
+    // TODO: Azure searchable PDF has 404 error - endpoint format may have changed
+    // Temporarily disabled until we debug the correct endpoint
+    /*
     let searchablePdfPath: string | undefined
     try {
       console.log('Requesting Azure searchable PDF...')
@@ -93,9 +95,10 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
     } catch (pdfErr: any) {
       console.warn('Failed to get searchable PDF, will use original:', pdfErr.message)
     }
+    */
     
     fs.unlinkSync(file.path)
-    res.json({ ...result, originalPdfPath, searchablePdfPath })
+    res.json({ ...result, originalPdfPath })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -147,21 +150,9 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  const { searchablePdfPath } = req.body
-  
-  // If we have Azure's searchable PDF, send it directly
-  if (searchablePdfPath && fs.existsSync(searchablePdfPath)) {
-    console.log('Sending Azure searchable PDF directly')
-    const filename = `${req.body.title || 'document'}.pdf`
-    res.download(searchablePdfPath, filename, (err) => {
-      if (err) console.error('Download error:', err)
-      // Keep the file for potential re-downloads
-    })
-    return
-  }
-  
-  // Fallback to generating PDF (shouldn't happen if searchable PDF exists)
-  const { paragraphs, title } = req.body
+  // Azure searchable PDF temporarily disabled due to 404 endpoint error
+  // Using pdf-lib generation with Unicode fonts
+  const { paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
@@ -169,9 +160,9 @@ app.post('/api/export/pdf', async (req, res) => {
       paragraphs,
       outPath,
       title,
-      false, // Simple flow mode as fallback
-      1,
-      undefined
+      preserveLayout !== false,
+      pageCount || 1,
+      originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : undefined
     )
     res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
