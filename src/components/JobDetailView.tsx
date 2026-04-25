@@ -145,6 +145,7 @@ export default function JobDetailView({ job }: { job: Job }) {
         title,
         preserveLayout: type === 'pdf',
         pageCount: job.pageCount,
+        searchablePdfPath: job.searchablePdfPath,
         originalPdfPath: job.originalPdfPath
       })
     })

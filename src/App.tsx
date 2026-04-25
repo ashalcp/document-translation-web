@@ -83,6 +83,7 @@ export default function App() {
           overallOCRConfidence: result.overallConfidence,
           pageCount: result.pageCount,
           originalPdfPath: result.pdfPath,
+          searchablePdfPath: result.searchablePdfPath,
           ocrProgress: 100
         })
       } catch (e: any) {

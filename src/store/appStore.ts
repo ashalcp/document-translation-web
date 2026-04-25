@@ -27,7 +27,8 @@ export interface Job {
   id: string
   fileName: string
   fileData: string // base64 for PDF preview
-  originalPdfPath?: string // server-side path for layout-preserving export
+  originalPdfPath?: string // server-side path to original uploaded PDF
+  searchablePdfPath?: string // server-side path to Azure's searchable PDF
   status: JobStatus
   ocrProgress: number
   ocrParagraphs: OCRParagraph[]
