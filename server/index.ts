@@ -1,16 +1,30 @@
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
+import basicAuth from 'express-basic-auth'
 import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { getSettings, saveSettings } from './settings'
 import { runOCR } from './ocr-service'
 import { translateParagraphs, getSupportedLanguages } from './translator-service'
-import { exportToPDF, exportToWord } from './exporter'
+import { exportToPDF, exportToWord, exportToJSON } from './exporter'
 
 const app = express()
 const PORT = process.env.PORT || 3001
+
+// Basic Auth (optional via env vars)
+const AUTH_USER = process.env.AUTH_USERNAME
+const AUTH_PASS = process.env.AUTH_PASSWORD
+
+if (AUTH_USER && AUTH_PASS) {
+  app.use(basicAuth({
+    users: { [AUTH_USER]: AUTH_PASS },
+    challenge: true,
+    realm: 'Document Translation'
+  }))
+  console.log(`🔒 Basic auth enabled for user: ${AUTH_USER}`)
+}
 
 app.use(cors())
 app.use(express.json({ limit: '50mb' }))
@@ -61,11 +75,15 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
   }
 
   try {
+    // Keep a copy of the PDF for later use in layout-preserving export
+    const pdfStorePath = path.join(os.tmpdir(), `${jobId}.pdf`)
+    fs.copyFileSync(file.path, pdfStorePath)
+    
     const result = await runOCR(file.path, settings.azureDocIntelEndpoint, settings.azureDocIntelKey, (cur, tot) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     fs.unlinkSync(file.path)
-    res.json(result)
+    res.json({ ...result, pdfPath: pdfStorePath })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -117,11 +135,18 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  const { paragraphs, title } = req.body
+  const { paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
   try {
-    await exportToPDF(paragraphs, outPath, title)
+    await exportToPDF(
+      paragraphs,
+      outPath,
+      title,
+      preserveLayout || false,
+      pageCount || 1,
+      originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : undefined
+    )
     res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
     console.error('PDF export error:', e.message, e.stack)
@@ -139,6 +164,20 @@ app.post('/api/export/word', async (req, res) => {
     res.download(outPath, `${title}.docx`, () => { try { fs.unlinkSync(outPath) } catch {} })
   } catch (e: any) {
     console.error('Word export error:', e.message, e.stack)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// ─── Export JSON ──────────────────────────────────────────────────────────────
+app.post('/api/export/json', (req, res) => {
+  const { data, title } = req.body
+  const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
+  const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.json`)
+  try {
+    exportToJSON(data, outPath)
+    res.download(outPath, `${title}.json`, () => { try { fs.unlinkSync(outPath) } catch {} })
+  } catch (e: any) {
+    console.error('JSON export error:', e.message, e.stack)
     res.status(500).json({ error: e.message })
   }
 })

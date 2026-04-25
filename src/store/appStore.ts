@@ -5,6 +5,7 @@ export interface OCRParagraph {
   pageNumber: number
   text: string
   confidence: number
+  boundingBox?: number[]
 }
 
 export interface TranslatedParagraph {
@@ -26,6 +27,7 @@ export interface Job {
   id: string
   fileName: string
   fileData: string // base64 for PDF preview
+  originalPdfPath?: string // server-side path for layout-preserving export
   status: JobStatus
   ocrProgress: number
   ocrParagraphs: OCRParagraph[]

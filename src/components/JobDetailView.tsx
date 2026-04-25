@@ -27,6 +27,7 @@ export default function JobDetailView({ job }: { job: Job }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [showLangSelector, setShowLangSelector] = useState(false)
   const [pendingLang, setPendingLang] = useState('es')
+  const [preserveLayout, setPreserveLayout] = useState(true)
 
   useEffect(() => {
     fetch('/api/languages').then(r => r.json()).then((langs: Language[]) => {
@@ -88,15 +89,64 @@ export default function JobDetailView({ job }: { job: Job }) {
     }
   }
 
-  const handleExport = async (type: 'pdf' | 'word') => {
+  const handleExport = async (type: 'pdf' | 'word' | 'json') => {
     const translation = activePanel !== 'ocr' ? job.translations[activePanel] : null
-    const paras = translation ? translation.paragraphs.map(p => ({ text: p.translatedText })) : job.ocrParagraphs.map(p => ({ text: p.text }))
     const langSuffix = translation ? `_${activePanel}` : '_ocr'
     const title = job.fileName.replace('.pdf', '') + langSuffix
+
+    if (type === 'json') {
+      const data = {
+        fileName: job.fileName,
+        ocrParagraphs: job.ocrParagraphs,
+        translations: job.translations,
+        pageCount: job.pageCount
+      }
+      const res = await fetch('/api/export/json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, title })
+      })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${title}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      return
+    }
+
+    // Merge translated text with original bounding boxes
+    let paragraphsWithLayout: Array<{ text: string; boundingBox?: number[]; pageNumber?: number }> = []
+    
+    if (translation) {
+      // Map translated paragraphs back to OCR paragraphs by ID to get bounding boxes
+      paragraphsWithLayout = translation.paragraphs.map(tp => {
+        const ocrPara = job.ocrParagraphs.find(op => op.id === tp.id)
+        return {
+          text: tp.translatedText,
+          boundingBox: ocrPara?.boundingBox,
+          pageNumber: ocrPara?.pageNumber
+        }
+      })
+    } else {
+      paragraphsWithLayout = job.ocrParagraphs.map(p => ({
+        text: p.text,
+        boundingBox: p.boundingBox,
+        pageNumber: p.pageNumber
+      }))
+    }
+
     const res = await fetch(`/api/export/${type}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paragraphs: paras, title })
+      body: JSON.stringify({
+        paragraphs: paragraphsWithLayout,
+        title,
+        preserveLayout: type === 'pdf',
+        pageCount: job.pageCount,
+        originalPdfPath: job.originalPdfPath
+      })
     })
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
@@ -188,6 +238,15 @@ export default function JobDetailView({ job }: { job: Job }) {
           )}
           {(job.status === 'done') && (
             <>
+              <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={preserveLayout}
+                  onChange={e => setPreserveLayout(e.target.checked)}
+                  className="rounded"
+                />
+                Layout
+              </label>
               <button onClick={() => handleExport('pdf')}
                 className="px-3 py-1 bg-green-700 hover:bg-green-800 text-white rounded-lg text-xs font-medium">
                 ⬇ PDF
@@ -195,6 +254,10 @@ export default function JobDetailView({ job }: { job: Job }) {
               <button onClick={() => handleExport('word')}
                 className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-medium">
                 ⬇ Word
+              </button>
+              <button onClick={() => handleExport('json')}
+                className="px-3 py-1 bg-yellow-700 hover:bg-yellow-800 text-white rounded-lg text-xs font-medium">
+                ⬇ JSON
               </button>
             </>
           )}

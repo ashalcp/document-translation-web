@@ -6,6 +6,7 @@ export interface OCRParagraph {
   pageNumber: number
   text: string
   confidence: number
+  boundingBox?: number[] // [x1, y1, x2, y2, x3, y3, x4, y4] normalized 0-1
 }
 
 export interface OCRResult {
@@ -47,22 +48,37 @@ export async function runOCR(
     : 0.95
 
   result.paragraphs?.forEach((para, idx) => {
+    const boundingRegion = para.boundingRegions?.[0]
+    const polygon = boundingRegion?.polygon
     paragraphs.push({
       id: `para-${idx}`,
-      pageNumber: para.boundingRegions?.[0]?.pageNumber ?? 1,
+      pageNumber: boundingRegion?.pageNumber ?? 1,
       text: para.content,
-      confidence: avgConf
+      confidence: avgConf,
+      boundingBox: polygon ? [
+        polygon[0].x, polygon[0].y,
+        polygon[1].x, polygon[1].y,
+        polygon[2].x, polygon[2].y,
+        polygon[3].x, polygon[3].y
+      ] : undefined
     })
   })
 
   if (paragraphs.length === 0) {
     result.pages?.forEach(page => {
       page.lines?.forEach((line, idx) => {
+        const polygon = line.polygon
         paragraphs.push({
           id: `line-${page.pageNumber}-${idx}`,
           pageNumber: page.pageNumber ?? 1,
           text: line.content,
-          confidence: avgConf
+          confidence: avgConf,
+          boundingBox: polygon ? [
+            polygon[0].x, polygon[0].y,
+            polygon[1].x, polygon[1].y,
+            polygon[2].x, polygon[2].y,
+            polygon[3].x, polygon[3].y
+          ] : undefined
         })
       })
     })
