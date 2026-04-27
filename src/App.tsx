@@ -84,7 +84,7 @@ export default function App() {
     jobs.forEach(job => {
       if (eventSources.has(job.id)) return
       if (job.status === 'done' || job.status === 'error') return
-      const es = new EventSource(`/api/progress/${job.id}`)
+      const es = new EventSource(`/api/progress/${job.id}`, { withCredentials: true })
       es.onmessage = (e) => {
         const data = JSON.parse(e.data)
         if (data.type === 'ocr-progress') {
