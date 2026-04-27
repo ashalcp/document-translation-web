@@ -18,13 +18,13 @@ export default function SettingsModal({ open, onClose }: Props) {
 
   useEffect(() => {
     if (open) {
-      fetch('/api/settings').then(r => r.json()).then(setForm).catch(() => {})
+      fetch('/api/settings', { credentials: 'include' }).then(r => r.json()).then(setForm).catch(() => {})
     }
   }, [open])
 
   const handleSave = async () => {
     await fetch('/api/settings', {
-      method: 'POST',
+      method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(form)
     })

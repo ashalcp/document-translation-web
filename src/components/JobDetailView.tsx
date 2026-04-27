@@ -29,7 +29,7 @@ export default function JobDetailView({ job }: { job: Job }) {
   const [pendingLang, setPendingLang] = useState('es')
 
   useEffect(() => {
-    fetch('/api/languages').then(r => r.json()).then((langs: Language[]) => {
+    fetch('/api/languages', { credentials: 'include' }).then(r => r.json()).then((langs: Language[]) => {
       if (langs?.length > 0) {
         setLanguages(langs)
         setPendingLang(langs[0].code)
@@ -59,7 +59,7 @@ export default function JobDetailView({ job }: { job: Job }) {
     setShowLangSelector(false)
     try {
       const res = await fetch('/api/translate', {
-        method: 'POST',
+        method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paragraphs: job.ocrParagraphs.map(p => ({ id: p.id, text: p.text })),
@@ -88,71 +88,103 @@ export default function JobDetailView({ job }: { job: Job }) {
     }
   }
 
-  const handleExport = async (type: 'pdf' | 'word' | 'json') => {
-    const translation = activePanel !== 'ocr' ? job.translations[activePanel] : null
-    const langSuffix = translation ? `_${activePanel}` : '_ocr'
-    const title = job.fileName.replace('.pdf', '') + langSuffix
+  const [downloading, setDownloading] = useState<string | null>(null)
 
-    if (type === 'json') {
-      const data = {
-        fileName: job.fileName,
-        ocrParagraphs: job.ocrParagraphs,
-        translations: job.translations,
-        pageCount: job.pageCount
+  const handleExport = async (type: 'pdf' | 'word' | 'json') => {
+    const isOCR = activePanel === 'ocr'
+    const translation = !isOCR ? job.translations[activePanel] : null
+    const langSuffix = isOCR ? '_ocr' : `_${activePanel}`
+    const baseName = job.fileName.replace(/\.pdf$/i, '')
+    const title = baseName + langSuffix
+    const key = `${type}-${activePanel}`
+
+    setDownloading(key)
+    try {
+      // ── JSON: export the active panel's data ────────────────────────────
+      if (type === 'json') {
+        let data: any
+        if (isOCR) {
+          data = { fileName: job.fileName, pageCount: job.pageCount, paragraphs: job.ocrParagraphs }
+        } else if (translation) {
+          data = {
+            fileName: job.fileName,
+            pageCount: job.pageCount,
+            language: activePanel,
+            languageName: translation.languageName,
+            paragraphs: translation.paragraphs.map(tp => {
+              const ocrPara = job.ocrParagraphs.find(op => op.id === tp.id)
+              return { id: tp.id, originalText: tp.originalText, translatedText: tp.translatedText, boundingBox: ocrPara?.boundingBox, pageNumber: ocrPara?.pageNumber }
+            })
+          }
+        } else return
+        const res = await fetch('/api/export/json', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data, title })
+        })
+        const blob = await res.blob()
+        triggerDownload(blob, `${title}.json`)
+        return
       }
-      const res = await fetch('/api/export/json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data, title })
+
+      // ── Build paragraphs with layout for PDF / Word ─────────────────────
+      type LayoutPara = {
+        text: string; boundingBox?: number[]; pageNumber?: number;
+        fontFamily?: string; fontSize?: number; fontWeight?: string; fontStyle?: string;
+        color?: string; lines?: Array<{ boundingBox: number[]; text: string; fontSize: number; fontWeight?: string; color?: string }>
+      }
+      let paragraphsWithLayout: LayoutPara[]
+
+      if (translation) {
+        paragraphsWithLayout = translation.paragraphs.map(tp => {
+          const ocrPara = job.ocrParagraphs.find(op => op.id === tp.id)
+          return {
+            text: tp.translatedText,
+            boundingBox: ocrPara?.boundingBox,
+            pageNumber: ocrPara?.pageNumber,
+            fontFamily: ocrPara?.fontFamily,
+            fontSize: ocrPara?.fontSize,
+            fontWeight: ocrPara?.fontWeight,
+            fontStyle: ocrPara?.fontStyle,
+            color: ocrPara?.color,
+            lines: ocrPara?.lines
+          }
+        })
+      } else {
+        paragraphsWithLayout = job.ocrParagraphs.map(p => ({
+          text: p.text,
+          boundingBox: p.boundingBox,
+          pageNumber: p.pageNumber,
+          fontFamily: p.fontFamily,
+          fontSize: p.fontSize,
+          fontWeight: p.fontWeight,
+          fontStyle: p.fontStyle,
+          color: p.color,
+          lines: p.lines
+        }))
+      }
+
+      const res = await fetch(`/api/export/${type}`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          searchablePdfPath: job.searchablePdfPath,
+          paragraphs: paragraphsWithLayout,
+          title,
+          preserveLayout: type === 'pdf',
+          pageCount: job.pageCount,
+          originalPdfPath: job.originalPdfPath
+        })
       })
       const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${title}.json`
-      a.click()
-      URL.revokeObjectURL(url)
-      return
+      triggerDownload(blob, `${title}.${type === 'pdf' ? 'pdf' : 'docx'}`)
+    } finally {
+      setDownloading(null)
     }
+  }
 
-    // Merge translated text with original bounding boxes
-    let paragraphsWithLayout: Array<{ text: string; boundingBox?: number[]; pageNumber?: number }> = []
-    
-    if (translation) {
-      // Map translated paragraphs back to OCR paragraphs by ID to get bounding boxes
-      paragraphsWithLayout = translation.paragraphs.map(tp => {
-        const ocrPara = job.ocrParagraphs.find(op => op.id === tp.id)
-        return {
-          text: tp.translatedText,
-          boundingBox: ocrPara?.boundingBox,
-          pageNumber: ocrPara?.pageNumber
-        }
-      })
-    } else {
-      paragraphsWithLayout = job.ocrParagraphs.map(p => ({
-        text: p.text,
-        boundingBox: p.boundingBox,
-        pageNumber: p.pageNumber
-      }))
-    }
-
-    const res = await fetch(`/api/export/${type}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        paragraphs: paragraphsWithLayout,
-        title,
-        preserveLayout: type === 'pdf',
-        pageCount: job.pageCount,
-        originalPdfPath: job.originalPdfPath
-      })
-    })
-    const blob = await res.blob()
+  const triggerDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
-    a.download = `${title}.${type === 'pdf' ? 'pdf' : 'docx'}`
-    a.click()
+    a.href = url; a.download = filename; a.click()
     URL.revokeObjectURL(url)
   }
 
@@ -230,28 +262,34 @@ export default function JobDetailView({ job }: { job: Job }) {
         {/* Export + accuracy on the right */}
         <div className="ml-auto flex items-center gap-2">
           {(job.status === 'ocr-done' || job.status === 'done') && (
-            <>
-              <div className="flex items-center gap-1">
-                <span className="text-gray-500 text-xs">OCR</span>
-                <AccuracyBadge value={job.overallOCRConfidence} />
-              </div>
-              <button onClick={() => handleExport('json')}
-                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-xs font-medium">
-                ⬇ OCR
-              </button>
-            </>
+            <div className="flex items-center gap-1">
+              <span className="text-gray-500 text-xs">OCR</span>
+              <AccuracyBadge value={job.overallOCRConfidence} />
+            </div>
           )}
-          {(job.status === 'done') && (
-            <>
-              <button onClick={() => handleExport('pdf')}
-                className="px-3 py-1 bg-green-700 hover:bg-green-800 text-white rounded-lg text-xs font-medium">
-                ⬇ PDF
+
+          {/* 3 fixed download buttons — always visible once OCR is done */}
+          {(job.status === 'ocr-done' || job.status === 'done') && (
+            <div className="flex items-center gap-1 border-l border-gray-600 pl-2">
+              <button
+                onClick={() => handleExport('pdf')}
+                disabled={!!downloading || (activePanel !== 'ocr' && !job.translations[activePanel])}
+                className="px-3 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium flex items-center gap-1">
+                {downloading === `pdf-${activePanel}` ? <span className="animate-spin">⏳</span> : '⬇'} PDF
               </button>
-              <button onClick={() => handleExport('word')}
-                className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-medium">
-                ⬇ Word
+              <button
+                onClick={() => handleExport('word')}
+                disabled={!!downloading || (activePanel !== 'ocr' && !job.translations[activePanel])}
+                className="px-3 py-1 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium flex items-center gap-1">
+                {downloading === `word-${activePanel}` ? <span className="animate-spin">⏳</span> : '⬇'} Word
               </button>
-            </>
+              <button
+                onClick={() => handleExport('json')}
+                disabled={!!downloading || (activePanel !== 'ocr' && !job.translations[activePanel])}
+                className="px-3 py-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg text-xs font-medium flex items-center gap-1">
+                {downloading === `json-${activePanel}` ? <span className="animate-spin">⏳</span> : '⬇'} JSON
+              </button>
+            </div>
           )}
         </div>
       </div>

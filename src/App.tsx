@@ -45,7 +45,7 @@ export default function App() {
 
   // Check if auth is required on mount
   useEffect(() => {
-    fetch('/api/auth/check')
+    fetch('/api/auth/check', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.authRequired === false) {
@@ -61,7 +61,7 @@ export default function App() {
   const handleLogin = async (username: string, password: string) => {
     try {
       const res = await fetch('/api/auth/login', {
-        method: 'POST',
+        method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       })
@@ -77,22 +77,9 @@ export default function App() {
     }
   }
 
-  // Show loading while checking auth
-  if (!authChecked) {
-    return (
-      <div className="h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-white text-lg">Loading...</div>
-      </div>
-    )
-  }
-
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} error={loginError} />
-  }
-
   // Subscribe to SSE progress for all jobs
   useEffect(() => {
+    if (!isAuthenticated) return
     const eventSources: Map<string, EventSource> = new Map()
     jobs.forEach(job => {
       if (eventSources.has(job.id)) return
@@ -109,7 +96,21 @@ export default function App() {
       eventSources.set(job.id, es)
     })
     return () => eventSources.forEach(es => es.close())
-  }, [jobs.map(j => j.id).join(',')])
+  }, [isAuthenticated, jobs.map(j => j.id).join(',')])
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    )
+  }
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} error={loginError} />
+  }
 
   const handleFiles = async (files: FileList | File[]) => {
     const pdfs = Array.from(files).filter(f => f.name.endsWith('.pdf'))
@@ -123,7 +124,7 @@ export default function App() {
       formData.append('jobId', jobId)
 
       try {
-        const res = await fetch('/api/ocr', { method: 'POST', body: formData })
+        const res = await fetch('/api/ocr', { method: 'POST', credentials: 'include', body: formData })
         if (!res.ok) {
           const err = await res.json()
           throw new Error(err.error)
@@ -134,7 +135,7 @@ export default function App() {
           ocrParagraphs: result.paragraphs,
           overallOCRConfidence: result.overallConfidence,
           pageCount: result.pageCount,
-          originalPdfPath: result.pdfPath,
+          originalPdfPath: result.originalPdfPath,
           searchablePdfPath: result.searchablePdfPath,
           ocrProgress: 100
         })

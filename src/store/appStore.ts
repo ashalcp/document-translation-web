@@ -1,11 +1,26 @@
 import { create } from 'zustand'
 
+export interface OCRLine {
+  boundingBox: number[]
+  text: string
+  fontSize: number
+  fontWeight?: string
+  color?: string
+}
+
 export interface OCRParagraph {
   id: string
   pageNumber: number
   text: string
   confidence: number
   boundingBox?: number[]
+  fontFamily?: string
+  fontSize?: number
+  fontWeight?: string
+  fontStyle?: string
+  color?: string
+  backgroundColor?: string
+  lines?: OCRLine[]
 }
 
 export interface TranslatedParagraph {

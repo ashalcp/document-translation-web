@@ -6,17 +6,38 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import { getSettings, saveSettings } from './settings'
-import { runOCR, getSearchablePDF } from './ocr-service'
+import { runOCR } from './ocr-service'
 import { translateParagraphs, getSupportedLanguages } from './translator-service'
-import { exportToPDF, exportToWord, exportToJSON } from './exporter'
+import { exportToPDF, exportToWord, exportToJSON, createTranslatedPDF } from './exporter'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Auth configuration
-const AUTH_USER = process.env.AUTH_USERNAME
-const AUTH_PASS = process.env.AUTH_PASSWORD
-const authRequired = !!(AUTH_USER && AUTH_PASS)
+// Auth configuration — supports multiple users via AUTH_USERS=user1:pass1,user2:pass2
+// Also supports single user via AUTH_USERNAME + AUTH_PASSWORD (legacy)
+const buildUserMap = (): Map<string, string> => {
+  const map = new Map<string, string>()
+  const multi = process.env.AUTH_USERS
+  if (multi) {
+    for (const entry of multi.split(',')) {
+      const colonIdx = entry.indexOf(':')
+      if (colonIdx > 0) {
+        const u = entry.slice(0, colonIdx).trim()
+        const p = entry.slice(colonIdx + 1).trim()
+        if (u && p) map.set(u, p)
+      }
+    }
+  }
+  // Legacy single-user fallback
+  const singleUser = process.env.AUTH_USERNAME
+  const singlePass = process.env.AUTH_PASSWORD
+  if (singleUser && singlePass && !map.has(singleUser)) {
+    map.set(singleUser, singlePass)
+  }
+  return map
+}
+const userMap = buildUserMap()
+const authRequired = userMap.size > 0
 
 // Session storage (in-memory, simple)
 const activeSessions = new Set<string>()
@@ -37,7 +58,7 @@ app.post('/api/auth/login', (req, res) => {
     return res.json({ success: true })
   }
   
-  if (username === AUTH_USER && password === AUTH_PASS) {
+  if (userMap.get(username) === password) {
     const sessionId = `session-${Date.now()}-${Math.random()}`
     activeSessions.add(sessionId)
     res.cookie('sessionId', sessionId, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }) // 24h
@@ -61,8 +82,11 @@ const requireAuth = (req: express.Request, res: express.Response, next: express.
   res.status(401).json({ error: 'Unauthorized' })
 }
 
-// Apply auth to all routes except /api/auth/*
+// Apply auth only to /api/* routes (except /api/auth/*)
 app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) {
+    return next()
+  }
   if (req.path.startsWith('/api/auth/')) {
     return next()
   }
@@ -119,23 +143,13 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
     const originalPdfPath = path.join(os.tmpdir(), `${jobId}_original.pdf`)
     fs.copyFileSync(file.path, originalPdfPath)
     
-    // Get OCR results
+    // Single call: OCR + font styles + searchable PDF
     const result = await runOCR(file.path, settings.azureDocIntelEndpoint, settings.azureDocIntelKey, (cur, tot) => {
       sendProgress(jobId, 'ocr-progress', { current: cur, total: tot })
     })
     
-    // Get searchable PDF from Azure (with fixed URL generation)
-    let searchablePdfPath: string | undefined
-    try {
-      console.log('Requesting Azure searchable PDF...')
-      searchablePdfPath = await getSearchablePDF(originalPdfPath, settings.azureDocIntelEndpoint, settings.azureDocIntelKey)
-      console.log('Searchable PDF received:', searchablePdfPath)
-    } catch (pdfErr: any) {
-      console.warn('Failed to get searchable PDF, will use pdf-lib fallback:', pdfErr.message)
-    }
-    
     fs.unlinkSync(file.path)
-    res.json({ ...result, originalPdfPath, searchablePdfPath })
+    res.json({ ...result, originalPdfPath })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -188,24 +202,51 @@ app.get('/api/languages', async (_req, res) => {
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
   const { searchablePdfPath, paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
-  
-  // If we have Azure's searchable PDF, send it directly
-  if (searchablePdfPath && fs.existsSync(searchablePdfPath)) {
-    console.log('Sending Azure searchable PDF directly')
-    const filename = `${title || 'document'}.pdf`
-    res.download(searchablePdfPath, filename, (err) => {
+
+  console.log(`\n📤 Export PDF request:`)
+  console.log(`   searchablePdfPath: ${searchablePdfPath} (exists: ${searchablePdfPath ? fs.existsSync(searchablePdfPath) : false})`)
+  console.log(`   originalPdfPath:   ${originalPdfPath} (exists: ${originalPdfPath ? fs.existsSync(originalPdfPath) : false})`)
+  console.log(`   paragraphs: ${paragraphs?.length ?? 0} items`)
+  if (paragraphs?.length > 0) {
+    const sample = paragraphs[0]
+    console.log(`   sample[0]: text="${(sample.text || '').slice(0, 60)}", lines=${sample.lines?.length ?? 0}, bbox=${JSON.stringify(sample.boundingBox?.slice(0,4))}`)
+  }
+
+  const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
+  const outPath = path.join(os.tmpdir(), `${safeTitle}-translated-${Date.now()}.pdf`)
+
+  // Determine best source PDF: prefer searchable (has Azure text layer), fall back to original
+  const sourcePdf = searchablePdfPath && fs.existsSync(searchablePdfPath)
+    ? searchablePdfPath
+    : (originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : null)
+
+  // If we have a source PDF AND translated paragraphs → strip + re-place translated text
+  if (sourcePdf && paragraphs && paragraphs.length > 0) {
+    console.log(`✅ Using strip+placement method from: ${sourcePdf}`)
+    try {
+      await createTranslatedPDF(sourcePdf, paragraphs, outPath)
+      res.download(outPath, `${title}.pdf`, () => {
+        try { fs.unlinkSync(outPath) } catch {}
+      })
+      return
+    } catch (e: any) {
+      console.error('❌ createTranslatedPDF failed:', e.message, e.stack)
+      // Fall through to text-only fallback
+    }
+  } else if (sourcePdf && (!paragraphs || paragraphs.length === 0)) {
+    // OCR-only download: send source PDF directly
+    console.log(`📄 Sending source PDF directly (no translations)`)
+    res.download(sourcePdf, `${title}.pdf`, (err) => {
       if (err) console.error('Download error:', err)
     })
     return
   }
-  
-  // Fallback: Generate PDF with pdf-lib (with Unicode fonts now working)
-  console.log('Generating PDF with pdf-lib (fonts should load now)')
-  const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
-  const outPath = path.join(os.tmpdir(), `${safeTitle}-${Date.now()}.pdf`)
+
+  // Last resort: generate a plain text-only PDF
+  console.log('⚠️ Falling back to plain PDF generation')
   try {
     await exportToPDF(
-      paragraphs,
+      paragraphs || [],
       outPath,
       title,
       preserveLayout !== false,
@@ -269,7 +310,7 @@ if (fs.existsSync(distPath)) {
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}`)
   if (authRequired) {
-    console.log(`🔒 Authentication enabled - Username: ${AUTH_USER}`)
+    console.log(`🔒 Authentication enabled - Users: ${[...userMap.keys()].join(', ')}`)
   } else {
     console.log(`🔓 No authentication required (set AUTH_USERNAME and AUTH_PASSWORD to enable)`)
   }
