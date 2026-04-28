@@ -119,8 +119,8 @@ export async function createTranslatedPDF(
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
   try {
-    fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: true })
-    fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: true })
+    fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
+    fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: false })
     console.log('✓ NotoSans fonts loaded')
   } catch {
     fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
@@ -228,9 +228,9 @@ export async function exportToPDF(
       doc.registerFontkit(fontkit as any)
       const fontRegularBytes = fs.readFileSync(FONT_REGULAR)
       const fontBoldBytes = fs.readFileSync(FONT_BOLD)
-      fontRegular = await doc.embedFont(fontRegularBytes, { subset: true })
-      fontBold = await doc.embedFont(fontBoldBytes, { subset: true })
-      console.log('Successfully loaded Unicode fonts with subsetting')
+      fontRegular = await doc.embedFont(fontRegularBytes, { subset: false })
+      fontBold = await doc.embedFont(fontBoldBytes, { subset: false })
+      console.log('Successfully loaded Unicode fonts without subsetting')
     } else {
       throw new Error('Font files not found')
     }
