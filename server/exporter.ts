@@ -52,6 +52,8 @@ function drawLineInSlot(
   const slotW = (x2 - x1) * 72, slotH = (y3 - y1) * 72
   const availW = slotW - 2
 
+  // Don't clamp font size — allow large sizes for logos/headings
+  // Only scale down if text is wider than the slot
   let line = '', wordCount = 0
   for (let i = startIdx; i < words.length; i++) {
     const test = line ? `${line} ${words[i]}` : words[i]
@@ -65,7 +67,10 @@ function drawLineInSlot(
   }
   if (!line) return 0
 
-  const textY = slotY - slotH + (slotH * 0.22)
+  // Vertical: baseline = bottom of slot + descender gap (15% of slot height, min 2pt)
+  // This works correctly for both small body text and large logo/heading text
+  const descenderGap = Math.max(2, slotH * 0.15)
+  const textY = slotY - slotH + descenderGap
   try { page.drawText(line, { x: slotX + 1, y: textY, font, size: fontSize, color: textColor }) }
   catch { /* skip unencodable glyphs */ }
   return wordCount
@@ -155,7 +160,7 @@ export async function createTranslatedPDF(
           if (wordIdx >= words.length) break
           if (!line.boundingBox || line.boundingBox.length < 8) continue
           const font = line.fontWeight === 'bold' ? fontBold : fontRegular
-          const fs = Math.max(5, Math.min(line.fontSize, 72))
+          const fs = Math.max(5, line.fontSize)  // no upper clamp — allow large logo/heading sizes
           const tc = line.color ? hexToRgb(line.color) : null
           const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
           const textColor = rgb(c.r, c.g, c.b)
@@ -173,7 +178,7 @@ export async function createTranslatedPDF(
       if (boxW <= 0 || boxH <= 0) { skipped++; return }
 
       const font = p.fontWeight === 'bold' ? fontBold : fontRegular
-      let fontSize = Math.max(5, Math.min(p.fontSize ?? boxH * 0.72, 72))
+      let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)  // no upper clamp
       const availW = boxW - 4
       const tc = p.color ? hexToRgb(p.color) : null
       const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
