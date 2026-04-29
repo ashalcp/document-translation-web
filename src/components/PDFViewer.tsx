@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -14,12 +14,42 @@ interface Props {
 
 export default function PDFViewer({ fileData, currentPage, onPageChange }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const [totalPages, setTotalPages] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pdfRef = useRef<any>(null)
   const renderTaskRef = useRef<any>(null)
   const isInitialLoad = useRef(true)
+
+  const renderPage = useCallback(async (pdf: any, pageNum: number) => {
+    if (renderTaskRef.current) {
+      try { renderTaskRef.current.cancel() } catch {}
+      renderTaskRef.current = null
+    }
+    try {
+      const p = await pdf.getPage(pageNum)
+      const container = containerRef.current
+      const canvas = canvasRef.current
+      if (!canvas || !container) return
+
+      // Scale to fit container width exactly
+      const containerWidth = container.clientWidth - 16 // subtract padding
+      const naturalViewport = p.getViewport({ scale: 1 })
+      const scale = containerWidth / naturalViewport.width
+      const viewport = p.getViewport({ scale })
+
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const task = p.render({ canvasContext: canvas.getContext('2d')!, viewport })
+      renderTaskRef.current = task
+      await task.promise
+      renderTaskRef.current = null
+    } catch (err: any) {
+      if (err?.name === 'RenderingCancelledException') return
+      setError(err?.message ?? 'Failed to render page')
+    }
+  }, [])
 
   useEffect(() => {
     setLoading(true)
@@ -49,27 +79,16 @@ export default function PDFViewer({ fileData, currentPage, onPageChange }: Props
     if (pdfRef.current) renderPage(pdfRef.current, currentPage)
   }, [currentPage])
 
-  const renderPage = async (pdf: any, pageNum: number) => {
-    if (renderTaskRef.current) {
-      try { renderTaskRef.current.cancel() } catch {}
-      renderTaskRef.current = null
-    }
-    try {
-      const p = await pdf.getPage(pageNum)
-      const viewport = p.getViewport({ scale: 1.2 })
-      const canvas = canvasRef.current
-      if (!canvas) return
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-      const task = p.render({ canvasContext: canvas.getContext('2d')!, viewport })
-      renderTaskRef.current = task
-      await task.promise
-      renderTaskRef.current = null
-    } catch (err: any) {
-      if (err?.name === 'RenderingCancelledException') return
-      setError(err?.message ?? 'Failed to render page')
-    }
-  }
+  // Re-render on container resize
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const observer = new ResizeObserver(() => {
+      if (pdfRef.current) renderPage(pdfRef.current, currentPage)
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [currentPage, renderPage])
 
   return (
     <div className="flex flex-col h-full">
@@ -80,7 +99,7 @@ export default function PDFViewer({ fileData, currentPage, onPageChange }: Props
         <button className="px-2 py-1 bg-gray-700 rounded disabled:opacity-40"
           disabled={currentPage >= totalPages || loading} onClick={() => onPageChange(currentPage + 1)}>▶</button>
       </div>
-      <div className="flex-1 overflow-auto bg-gray-900 flex justify-center items-center p-2">
+      <div ref={containerRef} className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-900 flex flex-col items-center p-2">
         {error ? (
           <div className="text-red-400 text-sm text-center">⚠️ {error}</div>
         ) : loading ? (
@@ -89,7 +108,7 @@ export default function PDFViewer({ fileData, currentPage, onPageChange }: Props
             <p className="text-sm">Loading PDF...</p>
           </div>
         ) : (
-          <canvas ref={canvasRef} className="shadow-lg" />
+          <canvas ref={canvasRef} className="shadow-lg w-full" />
         )}
       </div>
     </div>
