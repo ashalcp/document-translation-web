@@ -207,29 +207,46 @@ export async function createTranslatedPDF(
   }
   console.log(`✓ Stripped ${stripped} text streams`)
 
-  // Step 2: Embed fonts
+  // Step 2: Embed fonts — only load fonts actually needed by this content
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
   const scriptFonts: Partial<Record<ScriptKey, any>> = {}
+
   try {
     fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
     fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: false })
-    console.log('✓ NotoSans fonts loaded')
+    console.log('✓ NotoSans base fonts loaded')
   } catch {
     fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
     fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
     console.warn('⚠ Fallback to Helvetica')
   }
-  // Embed all script-specific fonts
-  for (const [script, fontPath] of Object.entries(SCRIPT_FONT_FILES) as [ScriptKey, string][]) {
-    if (script === 'latin') continue
-    if (fs.existsSync(fontPath)) {
-      try {
-        scriptFonts[script] = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: false })
-      } catch { console.warn(`⚠ Failed to load ${script} font`) }
+
+  // Detect which scripts are actually used in this translation
+  const neededScripts = new Set<ScriptKey>()
+  for (const p of paragraphs) {
+    if (p.text) neededScripts.add(detectScript(p.text))
+    if (p.lines) for (const l of p.lines) if (l.text) neededScripts.add(detectScript(l.text))
+  }
+  neededScripts.delete('latin')
+  console.log(`✓ Scripts detected: ${[...neededScripts].join(', ') || 'latin only'}`)
+
+  // Only embed fonts for scripts actually present
+  for (const script of neededScripts) {
+    const fontPath = SCRIPT_FONT_FILES[script]
+    if (!fontPath || !fs.existsSync(fontPath)) {
+      console.warn(`⚠ Font file missing for script: ${script}`)
+      continue
+    }
+    try {
+      // Use subset:true for large OTF fonts (CJK), subset:false for smaller TTF fonts
+      const isOtf = fontPath.endsWith('.otf')
+      scriptFonts[script] = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: isOtf })
+      console.log(`✓ ${script} font embedded (${isOtf ? 'OTF subset' : 'TTF full'})`)
+    } catch (e: any) {
+      console.warn(`⚠ Failed to embed ${script} font: ${e?.message}`)
     }
   }
-  console.log(`✓ Script fonts loaded: ${Object.keys(scriptFonts).join(', ')}`)
 
   // Helper: pick font based on text content
   const getFont = (text: string, bold: boolean): any => {
