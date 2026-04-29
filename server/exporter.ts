@@ -387,16 +387,18 @@ export async function createTranslatedPDF(
           const { r, g, b } = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
 
           if (isComplex) {
-            // Collect words that fit this slot as one text block
-            const font = getFont(false)
+            // For complex scripts (Malayalam etc.) avoid ANY fontkit/GPOS calls —
+            // font.widthOfTextAtSize() triggers the GPOS processor which crashes.
+            // Use a character-count estimate (em-width ~0.55× fontSize) instead.
+            const estimatedCharW = fs_size * 0.55
             const availW = slotW - 2
             let slotText = '', count = 0
             for (let i = wordIdx; i < words.length; i++) {
               const test = slotText ? `${slotText} ${words[i]}` : words[i]
-              if (font.widthOfTextAtSize(test, fs_size) > availW && slotText) break
+              if (test.length * estimatedCharW > availW && slotText) break
               slotText = test; count++
             }
-            if (!slotText) { slotText = words[wordIdx]; count = 1 }
+            if (!slotText) { slotText = words[wordIdx] ?? ''; count = 1 }
             await drawComplexSlot(page, slotText, slotX, slotY, slotW, slotH, fs_size, r, g, b)
             wordIdx += count
           } else {
