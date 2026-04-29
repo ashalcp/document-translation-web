@@ -6,22 +6,95 @@ import * as path from 'path'
 import * as zlib from 'zlib'
 
 // Fonts will be copied to dist-server/fonts/ during build
-const FONT_REGULAR   = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
-const FONT_BOLD      = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
-const FONT_MALAYALAM = path.join(__dirname, 'fonts/NotoSansMalayalam.ttf')
-const FONT_ARABIC    = path.join(__dirname, 'fonts/NotoSansArabic.ttf')
-const FONT_TAMIL     = path.join(__dirname, 'fonts/NotoSansTamil.ttf')
+const FONT_REGULAR      = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
+const FONT_BOLD         = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
+const FONT_MALAYALAM    = path.join(__dirname, 'fonts/NotoSansMalayalam.ttf')
+const FONT_ARABIC       = path.join(__dirname, 'fonts/NotoSansArabic.ttf')
+const FONT_TAMIL        = path.join(__dirname, 'fonts/NotoSansTamil.ttf')
+const FONT_DEVANAGARI   = path.join(__dirname, 'fonts/NotoSansDevanagari.ttf')
+const FONT_BENGALI      = path.join(__dirname, 'fonts/NotoSansBengali.ttf')
+const FONT_GUJARATI     = path.join(__dirname, 'fonts/NotoSansGujarati.ttf')
+const FONT_GURMUKHI     = path.join(__dirname, 'fonts/NotoSansGurmukhi.ttf')
+const FONT_TELUGU       = path.join(__dirname, 'fonts/NotoSansTelugu.ttf')
+const FONT_KANNADA      = path.join(__dirname, 'fonts/NotoSansKannada.ttf')
+const FONT_SINHALA      = path.join(__dirname, 'fonts/NotoSansSinhala.ttf')
+const FONT_THAI         = path.join(__dirname, 'fonts/NotoSansThai.ttf')
+const FONT_HEBREW       = path.join(__dirname, 'fonts/NotoSansHebrew.ttf')
+const FONT_GEORGIAN     = path.join(__dirname, 'fonts/NotoSansGeorgian.ttf')
+const FONT_ARMENIAN     = path.join(__dirname, 'fonts/NotoSansArmenian.ttf')
+const FONT_KHMER        = path.join(__dirname, 'fonts/NotoSansKhmer.ttf')
+const FONT_MYANMAR      = path.join(__dirname, 'fonts/NotoSansMyanmar.ttf')
+const FONT_LAO          = path.join(__dirname, 'fonts/NotoSansLao.ttf')
+const FONT_ETHIOPIC     = path.join(__dirname, 'fonts/NotoSansEthiopic.ttf')
+const FONT_ORIYA        = path.join(__dirname, 'fonts/NotoSansOriya.ttf')
+const FONT_MEETEI       = path.join(__dirname, 'fonts/NotoSansMeeteiMayek.ttf')
+const FONT_THAANA       = path.join(__dirname, 'fonts/NotoSansThaana.ttf')
+const FONT_CJK_SC       = path.join(__dirname, 'fonts/NotoSansSC.ttf')   // Chinese Simplified + Traditional
+const FONT_JP           = path.join(__dirname, 'fonts/NotoSansJP.ttf')   // Japanese
+const FONT_KR           = path.join(__dirname, 'fonts/NotoSansKR.ttf')   // Korean
 
-// Unicode range detectors
-function detectScript(text: string): 'malayalam' | 'arabic' | 'tamil' | 'latin' {
+// Unicode range → font key
+type ScriptKey =
+  'malayalam'|'arabic'|'tamil'|'devanagari'|'bengali'|'gujarati'|'gurmukhi'|
+  'telugu'|'kannada'|'sinhala'|'thai'|'hebrew'|'georgian'|'armenian'|'khmer'|
+  'myanmar'|'lao'|'ethiopic'|'oriya'|'meetei'|'thaana'|'japanese'|'korean'|'cjk'|'latin'
+
+function detectScript(text: string): ScriptKey {
   if (/[\u0D00-\u0D7F]/.test(text)) return 'malayalam'
-  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text)) return 'arabic'
+  if (/[\u0900-\u097F\uA8E0-\uA8FF]/.test(text)) return 'devanagari'         // Hindi, Marathi, Nepali, Maithili, Bhojpuri, etc.
+  if (/[\u0980-\u09FF]/.test(text)) return 'bengali'                          // Bangla, Assamese
+  if (/[\u0A80-\u0AFF]/.test(text)) return 'gujarati'
+  if (/[\u0A00-\u0A7F]/.test(text)) return 'gurmukhi'                         // Punjabi
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'telugu'
+  if (/[\u0C80-\u0CFF]/.test(text)) return 'kannada'
   if (/[\u0B80-\u0BFF]/.test(text)) return 'tamil'
+  if (/[\u0B00-\u0B7F]/.test(text)) return 'oriya'
+  if (/[\u0D80-\u0DFF]/.test(text)) return 'sinhala'
+  if (/[\u0E00-\u0E7F]/.test(text)) return 'thai'
+  if (/[\u0E80-\u0EFF]/.test(text)) return 'lao'
+  if (/[\u1000-\u109F\uA9E0-\uA9FF\uAA60-\uAA7F]/.test(text)) return 'myanmar'
+  if (/[\u1780-\u17FF\u19E0-\u19FF]/.test(text)) return 'khmer'
+  if (/[\u0F00-\u0FFF]/.test(text)) return 'myanmar'                          // Tibetan — Myanmar font has partial coverage; use Myanmar font
+  if (/[\u0590-\u05FF\uFB1D-\uFB4F]/.test(text)) return 'hebrew'
+  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text)) return 'arabic'  // Arabic, Persian, Urdu, Pashto, Dari, Sindhi, Uyghur, Kashmiri
+  if (/[\u10A0-\u10FF\u2D00-\u2D2F]/.test(text)) return 'georgian'
+  if (/[\u0530-\u058F\uFB13-\uFB17]/.test(text)) return 'armenian'
+  if (/[\u1200-\u137F\u1380-\u139F\u2D80-\u2DDF\uAB01-\uAB2F]/.test(text)) return 'ethiopic'  // Amharic, Tigrinya
+  if (/[\uABC0-\uABFF]/.test(text)) return 'meetei'                           // Manipuri
+  if (/[\u0780-\u07BF]/.test(text)) return 'thaana'                           // Divehi
+  if (/[\u3040-\u30FF\u31F0-\u31FF\uFF65-\uFF9F]/.test(text)) return 'japanese'  // Hiragana, Katakana
+  if (/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/.test(text)) return 'korean'
+  if (/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u{20000}-\u{2A6DF}]/u.test(text)) return 'cjk'  // Chinese, Japanese kanji, etc.
   return 'latin'
 }
 
-// Cache embedded script fonts per PDFDocument to avoid re-embedding
-const scriptFontCache = new WeakMap<any, Record<string, any>>()
+const SCRIPT_FONT_FILES: Record<ScriptKey, string> = {
+  malayalam:  FONT_MALAYALAM,
+  arabic:     FONT_ARABIC,
+  tamil:      FONT_TAMIL,
+  devanagari: FONT_DEVANAGARI,
+  bengali:    FONT_BENGALI,
+  gujarati:   FONT_GUJARATI,
+  gurmukhi:   FONT_GURMUKHI,
+  telugu:     FONT_TELUGU,
+  kannada:    FONT_KANNADA,
+  sinhala:    FONT_SINHALA,
+  thai:       FONT_THAI,
+  hebrew:     FONT_HEBREW,
+  georgian:   FONT_GEORGIAN,
+  armenian:   FONT_ARMENIAN,
+  khmer:      FONT_KHMER,
+  myanmar:    FONT_MYANMAR,
+  lao:        FONT_LAO,
+  ethiopic:   FONT_ETHIOPIC,
+  oriya:      FONT_ORIYA,
+  meetei:     FONT_MEETEI,
+  thaana:     FONT_THAANA,
+  japanese:   FONT_JP,
+  korean:     FONT_KR,
+  cjk:        FONT_CJK_SC,
+  latin:      FONT_REGULAR,
+}
 
 export interface ExportLine {
   boundingBox: number[]
@@ -137,7 +210,7 @@ export async function createTranslatedPDF(
   // Step 2: Embed fonts
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
-  const scriptFonts: Record<string, any> = {}
+  const scriptFonts: Partial<Record<ScriptKey, any>> = {}
   try {
     fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
     fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: false })
@@ -147,20 +220,16 @@ export async function createTranslatedPDF(
     fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
     console.warn('⚠ Fallback to Helvetica')
   }
-  // Embed script-specific fonts
-  const scriptFontFiles: Record<string, string> = {
-    malayalam: FONT_MALAYALAM,
-    arabic:    FONT_ARABIC,
-    tamil:     FONT_TAMIL,
-  }
-  for (const [script, fontPath] of Object.entries(scriptFontFiles)) {
+  // Embed all script-specific fonts
+  for (const [script, fontPath] of Object.entries(SCRIPT_FONT_FILES) as [ScriptKey, string][]) {
+    if (script === 'latin') continue
     if (fs.existsSync(fontPath)) {
       try {
         scriptFonts[script] = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: false })
-        console.log(`✓ ${script} font loaded`)
       } catch { console.warn(`⚠ Failed to load ${script} font`) }
     }
   }
+  console.log(`✓ Script fonts loaded: ${Object.keys(scriptFonts).join(', ')}`)
 
   // Helper: pick font based on text content
   const getFont = (text: string, bold: boolean): any => {
