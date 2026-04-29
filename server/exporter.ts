@@ -129,6 +129,56 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   return { r: r / 255, g: g / 255, b: b / 255 }
 }
 
+/**
+ * Draw text using fontkit's layout engine directly via raw PDF operators.
+ * This bypasses pdf-lib's drawText which crashes for complex scripts (Malayalam etc.)
+ * due to regeneratorRuntime issues with async generators in fontkit.
+ */
+function drawTextRaw(
+  page: any,
+  fkFont: any,
+  embeddedFont: any,
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  color: { r: number; g: number; b: number }
+): void {
+  try {
+    const run = fkFont.layout(text)
+    if (!run?.glyphs?.length) return
+
+    let hexStr = '<'
+    for (const glyph of run.glyphs) {
+      hexStr += glyph.id.toString(16).padStart(4, '0')
+    }
+    hexStr += '>'
+
+    const fontName = embeddedFont.name
+    const r = color.r.toFixed(4), g = color.g.toFixed(4), b = color.b.toFixed(4)
+    const ops = `q\n${r} ${g} ${b} rg\nBT\n/${fontName} ${fontSize} Tf\n${x.toFixed(4)} ${y.toFixed(4)} Td\n${hexStr} Tj\nET\nQ\n`
+
+    // Append a new content stream to the page
+    const doc = page.doc
+    const stream = doc.context.stream(Buffer.from(ops), {})
+    const streamRef = doc.context.register(stream)
+    page.node.addContentStream(streamRef)
+  } catch {
+    // silent
+  }
+}
+
+/**
+ * Safe text width — returns estimated width on failure (complex scripts crash widthOfTextAtSize)
+ */
+function safeWidth(font: any, text: string, size: number): number {
+  try {
+    return font.widthOfTextAtSize(text, size)
+  } catch {
+    return text.length * size * 0.55
+  }
+}
+
 function drawLineInSlot(
   page: any, words: string[], startIdx: number,
   font: any, fontSize: number, lineBox: number[],
@@ -211,6 +261,7 @@ export async function createTranslatedPDF(
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
   const scriptFonts: Partial<Record<ScriptKey, any>> = {}
+  const scriptFkFonts: Partial<Record<ScriptKey, any>> = {}
 
   try {
     fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
@@ -241,18 +292,23 @@ export async function createTranslatedPDF(
     try {
       // Use subset:true for large OTF fonts (CJK), subset:false for smaller TTF fonts
       const isOtf = fontPath.endsWith('.otf')
-      scriptFonts[script] = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: isOtf })
+      const fontBytes = fs.readFileSync(fontPath)
+      scriptFonts[script] = await pdfDoc.embedFont(fontBytes, { subset: isOtf })
+      // Also store a raw fontkit instance for direct glyph drawing (complex scripts)
+      scriptFkFonts[script] = (fontkit as any).create(fontBytes)
       console.log(`✓ ${script} font embedded (${isOtf ? 'OTF subset' : 'TTF full'})`)
     } catch (e: any) {
       console.warn(`⚠ Failed to embed ${script} font: ${e?.message}`)
     }
   }
 
-  // Helper: pick font based on text content
-  const getFont = (text: string, bold: boolean): any => {
+  // Helper: pick pdf-lib font and fontkit instance based on text content
+  const getFont = (text: string, bold: boolean): { pdfFont: any; fkFont: any | null; isComplex: boolean } => {
     const script = detectScript(text)
-    if (script !== 'latin' && scriptFonts[script]) return scriptFonts[script]
-    return bold ? fontBold : fontRegular
+    if (script !== 'latin' && scriptFonts[script]) {
+      return { pdfFont: scriptFonts[script], fkFont: scriptFkFonts[script] ?? null, isComplex: true }
+    }
+    return { pdfFont: bold ? fontBold : fontRegular, fkFont: null, isComplex: false }
   }
 
   // Step 3: Group by page, place translated words into line slots
@@ -282,13 +338,25 @@ export async function createTranslatedPDF(
           if (wordIdx >= words.length) break
           if (!line.boundingBox || line.boundingBox.length < 8) continue
           const lineText = words.slice(wordIdx).join(' ')
-          const font = getFont(lineText, line.fontWeight === 'bold')
-          const fs = Math.max(5, line.fontSize)  // no upper clamp — allow large logo/heading sizes
+          const { pdfFont, fkFont, isComplex } = getFont(lineText, line.fontWeight === 'bold')
+          const fs = Math.max(5, line.fontSize)
           const tc = line.color ? hexToRgb(line.color) : null
           const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
           const textColor = rgb(c.r, c.g, c.b)
-          const consumed = drawLineInSlot(page, words, wordIdx, font, fs, line.boundingBox, height, textColor)
-          wordIdx += Math.max(1, consumed)
+
+          if (isComplex && fkFont) {
+            // Complex script: use raw glyph drawing, place full remaining text at slot position
+            const [x1, y1, , , , y3] = line.boundingBox
+            const slotX = x1 * 72, slotY = height - (y1 * 72)
+            const slotH = (y3 - y1) * 72
+            const descenderGap = Math.max(2, slotH * 0.15)
+            const textY = slotY - slotH + descenderGap
+            drawTextRaw(page, fkFont, pdfFont, lineText, slotX + 1, textY, fs, c)
+            wordIdx = words.length // consume all words for this line
+          } else {
+            const consumed = drawLineInSlot(page, words, wordIdx, pdfFont, fs, line.boundingBox, height, textColor)
+            wordIdx += Math.max(1, consumed)
+          }
         }
         placed++; return
       }
@@ -300,14 +368,20 @@ export async function createTranslatedPDF(
       const boxW = (x2 - x1) * 72, boxH = (y3 - y1) * 72
       if (boxW <= 0 || boxH <= 0) { skipped++; return }
 
-      const font = getFont(p.text, p.fontWeight === 'bold')
-      let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)  // no upper clamp
+      const { pdfFont, fkFont, isComplex } = getFont(p.text, p.fontWeight === 'bold')
+      let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)
       const availW = boxW - 4
       const tc = p.color ? hexToRgb(p.color) : null
       const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
       const textColor = rgb(c.r, c.g, c.b)
 
-      const w = font.widthOfTextAtSize(p.text, fontSize)
+      if (isComplex && fkFont) {
+        // Complex script: draw full text at paragraph position
+        drawTextRaw(page, fkFont, pdfFont, p.text, pdfX + 2, pdfY - fontSize, fontSize, c)
+        placed++; return
+      }
+
+      const w = safeWidth(pdfFont, p.text, fontSize)
       if (w > availW && availW > 0) fontSize = Math.max(5, fontSize * availW / w)
       const lineH = fontSize * 1.35
       const maxLines = Math.max(1, Math.floor(boxH / lineH))
@@ -315,7 +389,7 @@ export async function createTranslatedPDF(
       let cur = ''
       for (const word of words) {
         const test = cur ? `${cur} ${word}` : word
-        if (font.widthOfTextAtSize(test, fontSize) > availW && cur) {
+        if (safeWidth(pdfFont, test, fontSize) > availW && cur) {
           wrappedLines.push(cur); cur = word
           if (wrappedLines.length >= maxLines) break
         } else { cur = test }
@@ -324,7 +398,7 @@ export async function createTranslatedPDF(
       wrappedLines.forEach((lt, li) => {
         const lineY = (pdfY - fontSize) - (li * lineH)
         if (lineY < pdfY - boxH - 2) return
-        try { page.drawText(lt, { x: pdfX + 2, y: lineY, font, size: fontSize, color: textColor }) }
+        try { page.drawText(lt, { x: pdfX + 2, y: lineY, font: pdfFont, size: fontSize, color: textColor }) }
         catch { /* skip */ }
       })
       placed++
