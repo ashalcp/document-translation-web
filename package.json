@@ -7,7 +7,7 @@
     "server": "npx ts-node --project tsconfig.server.json server/index.ts",
     "client": "vite",
     "build": "vite build && npx tsc -p tsconfig.server.json && npm run copy-fonts",
-    "copy-fonts": "mkdir -p dist-server/fonts && cp server/fonts/*.ttf server/fonts/*.otf dist-server/fonts/",
+    "copy-fonts": "mkdir -p dist-server/fonts && cp server/fonts/*.ttf dist-server/fonts/",
     "start": "node dist-server/index.js",
     "preview": "vite preview"
   },
@@ -25,7 +25,6 @@
     "pdfjs-dist": "^4.4.168",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
-    "regenerator-runtime": "^0.14.1",
     "zustand": "^4.5.0"
   },
   "devDependencies": {

@@ -6,95 +6,8 @@ import * as path from 'path'
 import * as zlib from 'zlib'
 
 // Fonts will be copied to dist-server/fonts/ during build
-const FONT_REGULAR      = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
-const FONT_BOLD         = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
-const FONT_MALAYALAM    = path.join(__dirname, 'fonts/NotoSansMalayalam.ttf')
-const FONT_ARABIC       = path.join(__dirname, 'fonts/NotoSansArabic.ttf')
-const FONT_TAMIL        = path.join(__dirname, 'fonts/NotoSansTamil.ttf')
-const FONT_DEVANAGARI   = path.join(__dirname, 'fonts/NotoSansDevanagari.ttf')
-const FONT_BENGALI      = path.join(__dirname, 'fonts/NotoSansBengali.ttf')
-const FONT_GUJARATI     = path.join(__dirname, 'fonts/NotoSansGujarati.ttf')
-const FONT_GURMUKHI     = path.join(__dirname, 'fonts/NotoSansGurmukhi.ttf')
-const FONT_TELUGU       = path.join(__dirname, 'fonts/NotoSansTelugu.ttf')
-const FONT_KANNADA      = path.join(__dirname, 'fonts/NotoSansKannada.ttf')
-const FONT_SINHALA      = path.join(__dirname, 'fonts/NotoSansSinhala.ttf')
-const FONT_THAI         = path.join(__dirname, 'fonts/NotoSansThai.ttf')
-const FONT_HEBREW       = path.join(__dirname, 'fonts/NotoSansHebrew.ttf')
-const FONT_GEORGIAN     = path.join(__dirname, 'fonts/NotoSansGeorgian.ttf')
-const FONT_ARMENIAN     = path.join(__dirname, 'fonts/NotoSansArmenian.ttf')
-const FONT_KHMER        = path.join(__dirname, 'fonts/NotoSansKhmer.ttf')
-const FONT_MYANMAR      = path.join(__dirname, 'fonts/NotoSansMyanmar.ttf')
-const FONT_LAO          = path.join(__dirname, 'fonts/NotoSansLao.ttf')
-const FONT_ETHIOPIC     = path.join(__dirname, 'fonts/NotoSansEthiopic.ttf')
-const FONT_ORIYA        = path.join(__dirname, 'fonts/NotoSansOriya.ttf')
-const FONT_MEETEI       = path.join(__dirname, 'fonts/NotoSansMeeteiMayek.ttf')
-const FONT_THAANA       = path.join(__dirname, 'fonts/NotoSansThaana.ttf')
-const FONT_CJK_SC       = path.join(__dirname, 'fonts/NotoSansSC.otf')   // Chinese Simplified + Traditional
-const FONT_JP           = path.join(__dirname, 'fonts/NotoSansJP.otf')   // Japanese
-const FONT_KR           = path.join(__dirname, 'fonts/NotoSansKR.otf')   // Korean
-
-// Unicode range → font key
-type ScriptKey =
-  'malayalam'|'arabic'|'tamil'|'devanagari'|'bengali'|'gujarati'|'gurmukhi'|
-  'telugu'|'kannada'|'sinhala'|'thai'|'hebrew'|'georgian'|'armenian'|'khmer'|
-  'myanmar'|'lao'|'ethiopic'|'oriya'|'meetei'|'thaana'|'japanese'|'korean'|'cjk'|'latin'
-
-function detectScript(text: string): ScriptKey {
-  if (/[\u0D00-\u0D7F]/.test(text)) return 'malayalam'
-  if (/[\u0900-\u097F\uA8E0-\uA8FF]/.test(text)) return 'devanagari'         // Hindi, Marathi, Nepali, Maithili, Bhojpuri, etc.
-  if (/[\u0980-\u09FF]/.test(text)) return 'bengali'                          // Bangla, Assamese
-  if (/[\u0A80-\u0AFF]/.test(text)) return 'gujarati'
-  if (/[\u0A00-\u0A7F]/.test(text)) return 'gurmukhi'                         // Punjabi
-  if (/[\u0C00-\u0C7F]/.test(text)) return 'telugu'
-  if (/[\u0C80-\u0CFF]/.test(text)) return 'kannada'
-  if (/[\u0B80-\u0BFF]/.test(text)) return 'tamil'
-  if (/[\u0B00-\u0B7F]/.test(text)) return 'oriya'
-  if (/[\u0D80-\u0DFF]/.test(text)) return 'sinhala'
-  if (/[\u0E00-\u0E7F]/.test(text)) return 'thai'
-  if (/[\u0E80-\u0EFF]/.test(text)) return 'lao'
-  if (/[\u1000-\u109F\uA9E0-\uA9FF\uAA60-\uAA7F]/.test(text)) return 'myanmar'
-  if (/[\u1780-\u17FF\u19E0-\u19FF]/.test(text)) return 'khmer'
-  if (/[\u0F00-\u0FFF]/.test(text)) return 'myanmar'                          // Tibetan — Myanmar font has partial coverage; use Myanmar font
-  if (/[\u0590-\u05FF\uFB1D-\uFB4F]/.test(text)) return 'hebrew'
-  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text)) return 'arabic'  // Arabic, Persian, Urdu, Pashto, Dari, Sindhi, Uyghur, Kashmiri
-  if (/[\u10A0-\u10FF\u2D00-\u2D2F]/.test(text)) return 'georgian'
-  if (/[\u0530-\u058F\uFB13-\uFB17]/.test(text)) return 'armenian'
-  if (/[\u1200-\u137F\u1380-\u139F\u2D80-\u2DDF\uAB01-\uAB2F]/.test(text)) return 'ethiopic'  // Amharic, Tigrinya
-  if (/[\uABC0-\uABFF]/.test(text)) return 'meetei'                           // Manipuri
-  if (/[\u0780-\u07BF]/.test(text)) return 'thaana'                           // Divehi
-  if (/[\u3040-\u30FF\u31F0-\u31FF\uFF65-\uFF9F]/.test(text)) return 'japanese'  // Hiragana, Katakana
-  if (/[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]/.test(text)) return 'korean'
-  if (/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u{20000}-\u{2A6DF}]/u.test(text)) return 'cjk'  // Chinese, Japanese kanji, etc.
-  return 'latin'
-}
-
-const SCRIPT_FONT_FILES: Record<ScriptKey, string> = {
-  malayalam:  FONT_MALAYALAM,
-  arabic:     FONT_ARABIC,
-  tamil:      FONT_TAMIL,
-  devanagari: FONT_DEVANAGARI,
-  bengali:    FONT_BENGALI,
-  gujarati:   FONT_GUJARATI,
-  gurmukhi:   FONT_GURMUKHI,
-  telugu:     FONT_TELUGU,
-  kannada:    FONT_KANNADA,
-  sinhala:    FONT_SINHALA,
-  thai:       FONT_THAI,
-  hebrew:     FONT_HEBREW,
-  georgian:   FONT_GEORGIAN,
-  armenian:   FONT_ARMENIAN,
-  khmer:      FONT_KHMER,
-  myanmar:    FONT_MYANMAR,
-  lao:        FONT_LAO,
-  ethiopic:   FONT_ETHIOPIC,
-  oriya:      FONT_ORIYA,
-  meetei:     FONT_MEETEI,
-  thaana:     FONT_THAANA,
-  japanese:   FONT_JP,
-  korean:     FONT_KR,
-  cjk:        FONT_CJK_SC,
-  latin:      FONT_REGULAR,
-}
+const FONT_REGULAR = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
+const FONT_BOLD = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
 
 export interface ExportLine {
   boundingBox: number[]
@@ -127,56 +40,6 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   const r = parseInt(m[0], 16), g = parseInt(m[1], 16), b = parseInt(m[2], 16)
   if (isNaN(r) || isNaN(g) || isNaN(b)) return null
   return { r: r / 255, g: g / 255, b: b / 255 }
-}
-
-/**
- * Draw text using fontkit's layout engine directly via raw PDF operators.
- * This bypasses pdf-lib's drawText which crashes for complex scripts (Malayalam etc.)
- * due to regeneratorRuntime issues with async generators in fontkit.
- */
-function drawTextRaw(
-  page: any,
-  fkFont: any,
-  embeddedFont: any,
-  text: string,
-  x: number,
-  y: number,
-  fontSize: number,
-  color: { r: number; g: number; b: number }
-): void {
-  try {
-    const run = fkFont.layout(text)
-    if (!run?.glyphs?.length) return
-
-    let hexStr = '<'
-    for (const glyph of run.glyphs) {
-      hexStr += glyph.id.toString(16).padStart(4, '0')
-    }
-    hexStr += '>'
-
-    const fontName = embeddedFont.name
-    const r = color.r.toFixed(4), g = color.g.toFixed(4), b = color.b.toFixed(4)
-    const ops = `q\n${r} ${g} ${b} rg\nBT\n/${fontName} ${fontSize} Tf\n${x.toFixed(4)} ${y.toFixed(4)} Td\n${hexStr} Tj\nET\nQ\n`
-
-    // Append a new content stream to the page
-    const doc = page.doc
-    const stream = doc.context.stream(Buffer.from(ops), {})
-    const streamRef = doc.context.register(stream)
-    page.node.addContentStream(streamRef)
-  } catch {
-    // silent
-  }
-}
-
-/**
- * Safe text width — returns estimated width on failure (complex scripts crash widthOfTextAtSize)
- */
-function safeWidth(font: any, text: string, size: number): number {
-  try {
-    return font.widthOfTextAtSize(text, size)
-  } catch {
-    return text.length * size * 0.55
-  }
 }
 
 function drawLineInSlot(
@@ -257,58 +120,17 @@ export async function createTranslatedPDF(
   }
   console.log(`✓ Stripped ${stripped} text streams`)
 
-  // Step 2: Embed fonts — only load fonts actually needed by this content
+  // Step 2: Embed fonts
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
-  const scriptFonts: Partial<Record<ScriptKey, any>> = {}
-  const scriptFkFonts: Partial<Record<ScriptKey, any>> = {}
-
   try {
     fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
     fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: false })
-    console.log('✓ NotoSans base fonts loaded')
+    console.log('✓ NotoSans fonts loaded')
   } catch {
     fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
     fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
     console.warn('⚠ Fallback to Helvetica')
-  }
-
-  // Detect which scripts are actually used in this translation
-  const neededScripts = new Set<ScriptKey>()
-  for (const p of paragraphs) {
-    if (p.text) neededScripts.add(detectScript(p.text))
-    if (p.lines) for (const l of p.lines) if (l.text) neededScripts.add(detectScript(l.text))
-  }
-  neededScripts.delete('latin')
-  console.log(`✓ Scripts detected: ${[...neededScripts].join(', ') || 'latin only'}`)
-
-  // Only embed fonts for scripts actually present
-  for (const script of neededScripts) {
-    const fontPath = SCRIPT_FONT_FILES[script]
-    if (!fontPath || !fs.existsSync(fontPath)) {
-      console.warn(`⚠ Font file missing for script: ${script}`)
-      continue
-    }
-    try {
-      // Use subset:true for large OTF fonts (CJK), subset:false for smaller TTF fonts
-      const isOtf = fontPath.endsWith('.otf')
-      const fontBytes = fs.readFileSync(fontPath)
-      scriptFonts[script] = await pdfDoc.embedFont(fontBytes, { subset: isOtf })
-      // Also store a raw fontkit instance for direct glyph drawing (complex scripts)
-      scriptFkFonts[script] = (fontkit as any).create(fontBytes)
-      console.log(`✓ ${script} font embedded (${isOtf ? 'OTF subset' : 'TTF full'})`)
-    } catch (e: any) {
-      console.warn(`⚠ Failed to embed ${script} font: ${e?.message}`)
-    }
-  }
-
-  // Helper: pick pdf-lib font and fontkit instance based on text content
-  const getFont = (text: string, bold: boolean): { pdfFont: any; fkFont: any | null; isComplex: boolean } => {
-    const script = detectScript(text)
-    if (script !== 'latin' && scriptFonts[script]) {
-      return { pdfFont: scriptFonts[script], fkFont: scriptFkFonts[script] ?? null, isComplex: true }
-    }
-    return { pdfFont: bold ? fontBold : fontRegular, fkFont: null, isComplex: false }
   }
 
   // Step 3: Group by page, place translated words into line slots
@@ -337,26 +159,13 @@ export async function createTranslatedPDF(
         for (const line of p.lines) {
           if (wordIdx >= words.length) break
           if (!line.boundingBox || line.boundingBox.length < 8) continue
-          const lineText = words.slice(wordIdx).join(' ')
-          const { pdfFont, fkFont, isComplex } = getFont(lineText, line.fontWeight === 'bold')
-          const fs = Math.max(5, line.fontSize)
+          const font = line.fontWeight === 'bold' ? fontBold : fontRegular
+          const fs = Math.max(5, line.fontSize)  // no upper clamp — allow large logo/heading sizes
           const tc = line.color ? hexToRgb(line.color) : null
           const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
           const textColor = rgb(c.r, c.g, c.b)
-
-          if (isComplex && fkFont) {
-            // Complex script: use raw glyph drawing, place full remaining text at slot position
-            const [x1, y1, , , , y3] = line.boundingBox
-            const slotX = x1 * 72, slotY = height - (y1 * 72)
-            const slotH = (y3 - y1) * 72
-            const descenderGap = Math.max(2, slotH * 0.15)
-            const textY = slotY - slotH + descenderGap
-            drawTextRaw(page, fkFont, pdfFont, lineText, slotX + 1, textY, fs, c)
-            wordIdx = words.length // consume all words for this line
-          } else {
-            const consumed = drawLineInSlot(page, words, wordIdx, pdfFont, fs, line.boundingBox, height, textColor)
-            wordIdx += Math.max(1, consumed)
-          }
+          const consumed = drawLineInSlot(page, words, wordIdx, font, fs, line.boundingBox, height, textColor)
+          wordIdx += Math.max(1, consumed)
         }
         placed++; return
       }
@@ -368,20 +177,14 @@ export async function createTranslatedPDF(
       const boxW = (x2 - x1) * 72, boxH = (y3 - y1) * 72
       if (boxW <= 0 || boxH <= 0) { skipped++; return }
 
-      const { pdfFont, fkFont, isComplex } = getFont(p.text, p.fontWeight === 'bold')
-      let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)
+      const font = p.fontWeight === 'bold' ? fontBold : fontRegular
+      let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)  // no upper clamp
       const availW = boxW - 4
       const tc = p.color ? hexToRgb(p.color) : null
       const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
       const textColor = rgb(c.r, c.g, c.b)
 
-      if (isComplex && fkFont) {
-        // Complex script: draw full text at paragraph position
-        drawTextRaw(page, fkFont, pdfFont, p.text, pdfX + 2, pdfY - fontSize, fontSize, c)
-        placed++; return
-      }
-
-      const w = safeWidth(pdfFont, p.text, fontSize)
+      const w = font.widthOfTextAtSize(p.text, fontSize)
       if (w > availW && availW > 0) fontSize = Math.max(5, fontSize * availW / w)
       const lineH = fontSize * 1.35
       const maxLines = Math.max(1, Math.floor(boxH / lineH))
@@ -389,7 +192,7 @@ export async function createTranslatedPDF(
       let cur = ''
       for (const word of words) {
         const test = cur ? `${cur} ${word}` : word
-        if (safeWidth(pdfFont, test, fontSize) > availW && cur) {
+        if (font.widthOfTextAtSize(test, fontSize) > availW && cur) {
           wrappedLines.push(cur); cur = word
           if (wrappedLines.length >= maxLines) break
         } else { cur = test }
@@ -398,7 +201,7 @@ export async function createTranslatedPDF(
       wrappedLines.forEach((lt, li) => {
         const lineY = (pdfY - fontSize) - (li * lineH)
         if (lineY < pdfY - boxH - 2) return
-        try { page.drawText(lt, { x: pdfX + 2, y: lineY, font: pdfFont, size: fontSize, color: textColor }) }
+        try { page.drawText(lt, { x: pdfX + 2, y: lineY, font, size: fontSize, color: textColor }) }
         catch { /* skip */ }
       })
       placed++
