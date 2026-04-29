@@ -136,6 +136,7 @@ export default function App() {
           overallOCRConfidence: result.overallConfidence,
           pageCount: result.pageCount,
           originalPdfPath: result.originalPdfPath,
+          originalPdfBase64: result.originalPdfBase64,
           searchablePdfPath: result.searchablePdfPath,
           ocrProgress: 100
         })

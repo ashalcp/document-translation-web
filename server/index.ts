@@ -140,9 +140,11 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
   }
 
   try {
-    // Keep a copy of the original PDF
+    // Keep a copy of the original PDF on disk AND return as base64 so the
+    // client can send it back at export time (avoids /tmp loss on Azure restarts)
     const originalPdfPath = path.join(os.tmpdir(), `${jobId}_original.pdf`)
     fs.copyFileSync(file.path, originalPdfPath)
+    const originalPdfBase64 = fs.readFileSync(originalPdfPath).toString('base64')
     
     // Single call: OCR + font styles + searchable PDF
     const result = await runOCR(file.path, settings.azureDocIntelEndpoint, settings.azureDocIntelKey, (cur, tot) => {
@@ -150,7 +152,7 @@ app.post('/api/ocr', upload.single('file'), async (req, res) => {
     })
     
     fs.unlinkSync(file.path)
-    res.json({ ...result, originalPdfPath })
+    res.json({ ...result, originalPdfPath, originalPdfBase64 })
   } catch (e: any) {
     console.error('OCR error:', e.message, e.stack)
     try { fs.unlinkSync(file.path) } catch {}
@@ -202,37 +204,47 @@ app.get('/api/languages', async (_req, res) => {
 
 // ─── Export PDF ───────────────────────────────────────────────────────────────
 app.post('/api/export/pdf', async (req, res) => {
-  const { searchablePdfPath, paragraphs, title, preserveLayout, pageCount, originalPdfPath } = req.body
+  const { searchablePdfPath, paragraphs, title, preserveLayout, pageCount, originalPdfPath, originalPdfBase64 } = req.body
 
   console.log(`\n📤 Export PDF request:`)
   console.log(`   searchablePdfPath: ${searchablePdfPath} (exists: ${searchablePdfPath ? fs.existsSync(searchablePdfPath) : false})`)
   console.log(`   originalPdfPath:   ${originalPdfPath} (exists: ${originalPdfPath ? fs.existsSync(originalPdfPath) : false})`)
+  console.log(`   originalPdfBase64: ${originalPdfBase64 ? `${Math.round(originalPdfBase64.length * 0.75 / 1024)}KB` : 'none'}`)
   console.log(`   paragraphs: ${paragraphs?.length ?? 0} items`)
-  if (paragraphs?.length > 0) {
-    const sample = paragraphs[0]
-    console.log(`   sample[0]: text="${(sample.text || '').slice(0, 60)}", lines=${sample.lines?.length ?? 0}, bbox=${JSON.stringify(sample.boundingBox?.slice(0,4))}`)
-  }
 
   const safeTitle = (title as string).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 80)
   const outPath = path.join(os.tmpdir(), `${safeTitle}-translated-${Date.now()}.pdf`)
 
-  // Determine best source PDF: prefer searchable (has Azure text layer), fall back to original
-  const sourcePdf = searchablePdfPath && fs.existsSync(searchablePdfPath)
+  // Determine best source PDF
+  let sourcePdf = searchablePdfPath && fs.existsSync(searchablePdfPath)
     ? searchablePdfPath
     : (originalPdfPath && fs.existsSync(originalPdfPath) ? originalPdfPath : null)
 
+  // If /tmp was wiped but we have the base64 fallback, restore it
+  let restoredPath: string | null = null
+  if (!sourcePdf && originalPdfBase64) {
+    try {
+      restoredPath = path.join(os.tmpdir(), `restored-${Date.now()}.pdf`)
+      fs.writeFileSync(restoredPath, Buffer.from(originalPdfBase64, 'base64'))
+      sourcePdf = restoredPath
+      console.log(`✅ Restored original PDF from base64 (${Math.round(fs.statSync(restoredPath).size / 1024)}KB)`)
+    } catch (e: any) {
+      console.error('Failed to restore PDF from base64:', e.message)
+    }
+  }
+
   // If we have a source PDF AND translated paragraphs → strip + re-place translated text
   if (sourcePdf && paragraphs && paragraphs.length > 0) {
-    console.log(`✅ Using strip+placement method from: ${sourcePdf}`)
+    console.log(`✅ Using strip+placement (canvas renderer) from: ${sourcePdf}`)
     try {
       await createTranslatedPDF(sourcePdf, paragraphs, outPath)
-      res.download(outPath, `${title}.pdf`, () => {
-        try { fs.unlinkSync(outPath) } catch {}
-      })
+      if (restoredPath) try { fs.unlinkSync(restoredPath) } catch {}
+      res.download(outPath, `${title}.pdf`, () => { try { fs.unlinkSync(outPath) } catch {} })
       return
     } catch (e: any) {
       console.error('❌ createTranslatedPDF failed:', e.message, e.stack)
-      // Fall through to text-only fallback
+      if (restoredPath) try { fs.unlinkSync(restoredPath) } catch {}
+      // Fall through to plain PDF
     }
   } else if (sourcePdf && (!paragraphs || paragraphs.length === 0)) {
     // OCR-only download: send source PDF directly

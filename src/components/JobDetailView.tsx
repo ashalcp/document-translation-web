@@ -171,7 +171,8 @@ export default function JobDetailView({ job }: { job: Job }) {
           title,
           preserveLayout: type === 'pdf',
           pageCount: job.pageCount,
-          originalPdfPath: job.originalPdfPath
+          originalPdfPath: job.originalPdfPath,
+          originalPdfBase64: job.originalPdfBase64
         })
       })
       const blob = await res.blob()
