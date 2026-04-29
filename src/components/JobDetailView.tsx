@@ -247,7 +247,12 @@ export default function JobDetailView({ job }: { job: Job }) {
               </div>
             ) : (
               <button
-                onClick={() => { setShowLangSelector(true) }}
+                onClick={() => {
+                  // Always reset pendingLang to the first currently-available language
+                  // so the visual selection and the state stay in sync
+                  if (availableLangs.length > 0) setPendingLang(availableLangs[0].code)
+                  setShowLangSelector(true)
+                }}
                 disabled={availableLangs.length === 0}
                 className="px-3 py-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg text-xs font-medium">
                 🌐 {translatedCodes.length === 0 ? 'Translate' : '+ Language'}
