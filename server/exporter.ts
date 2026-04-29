@@ -6,8 +6,22 @@ import * as path from 'path'
 import * as zlib from 'zlib'
 
 // Fonts will be copied to dist-server/fonts/ during build
-const FONT_REGULAR = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
-const FONT_BOLD = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
+const FONT_REGULAR   = path.join(__dirname, 'fonts/NotoSans-Regular.ttf')
+const FONT_BOLD      = path.join(__dirname, 'fonts/NotoSans-Bold.ttf')
+const FONT_MALAYALAM = path.join(__dirname, 'fonts/NotoSansMalayalam.ttf')
+const FONT_ARABIC    = path.join(__dirname, 'fonts/NotoSansArabic.ttf')
+const FONT_TAMIL     = path.join(__dirname, 'fonts/NotoSansTamil.ttf')
+
+// Unicode range detectors
+function detectScript(text: string): 'malayalam' | 'arabic' | 'tamil' | 'latin' {
+  if (/[\u0D00-\u0D7F]/.test(text)) return 'malayalam'
+  if (/[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text)) return 'arabic'
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'tamil'
+  return 'latin'
+}
+
+// Cache embedded script fonts per PDFDocument to avoid re-embedding
+const scriptFontCache = new WeakMap<any, Record<string, any>>()
 
 export interface ExportLine {
   boundingBox: number[]
@@ -123,6 +137,7 @@ export async function createTranslatedPDF(
   // Step 2: Embed fonts
   pdfDoc.registerFontkit(fontkit as any)
   let fontRegular: any, fontBold: any
+  const scriptFonts: Record<string, any> = {}
   try {
     fontRegular = await pdfDoc.embedFont(fs.readFileSync(FONT_REGULAR), { subset: false })
     fontBold    = await pdfDoc.embedFont(fs.readFileSync(FONT_BOLD),    { subset: false })
@@ -131,6 +146,27 @@ export async function createTranslatedPDF(
     fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica)
     fontBold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
     console.warn('⚠ Fallback to Helvetica')
+  }
+  // Embed script-specific fonts
+  const scriptFontFiles: Record<string, string> = {
+    malayalam: FONT_MALAYALAM,
+    arabic:    FONT_ARABIC,
+    tamil:     FONT_TAMIL,
+  }
+  for (const [script, fontPath] of Object.entries(scriptFontFiles)) {
+    if (fs.existsSync(fontPath)) {
+      try {
+        scriptFonts[script] = await pdfDoc.embedFont(fs.readFileSync(fontPath), { subset: false })
+        console.log(`✓ ${script} font loaded`)
+      } catch { console.warn(`⚠ Failed to load ${script} font`) }
+    }
+  }
+
+  // Helper: pick font based on text content
+  const getFont = (text: string, bold: boolean): any => {
+    const script = detectScript(text)
+    if (script !== 'latin' && scriptFonts[script]) return scriptFonts[script]
+    return bold ? fontBold : fontRegular
   }
 
   // Step 3: Group by page, place translated words into line slots
@@ -159,7 +195,8 @@ export async function createTranslatedPDF(
         for (const line of p.lines) {
           if (wordIdx >= words.length) break
           if (!line.boundingBox || line.boundingBox.length < 8) continue
-          const font = line.fontWeight === 'bold' ? fontBold : fontRegular
+          const lineText = words.slice(wordIdx).join(' ')
+          const font = getFont(lineText, line.fontWeight === 'bold')
           const fs = Math.max(5, line.fontSize)  // no upper clamp — allow large logo/heading sizes
           const tc = line.color ? hexToRgb(line.color) : null
           const c = tc ?? { r: 0.08, g: 0.08, b: 0.08 }
@@ -177,7 +214,7 @@ export async function createTranslatedPDF(
       const boxW = (x2 - x1) * 72, boxH = (y3 - y1) * 72
       if (boxW <= 0 || boxH <= 0) { skipped++; return }
 
-      const font = p.fontWeight === 'bold' ? fontBold : fontRegular
+      const font = getFont(p.text, p.fontWeight === 'bold')
       let fontSize = Math.max(5, p.fontSize ?? boxH * 0.72)  // no upper clamp
       const availW = boxW - 4
       const tc = p.color ? hexToRgb(p.color) : null
