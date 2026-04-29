@@ -24,7 +24,11 @@ jobs:
         run: |
           npm install
           npm run build
+          # Explicitly install the Linux x64 binary for @napi-rs/canvas (needed for Azure App Service Linux)
+          npm install @napi-rs/canvas-linux-x64-gnu --no-save
           npm prune --omit=dev
+          # Re-install the linux binary after prune (prune may remove optional deps)
+          npm install @napi-rs/canvas-linux-x64-gnu --no-save
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
