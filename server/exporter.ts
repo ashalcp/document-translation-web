@@ -5,17 +5,17 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as zlib from 'zlib'
 
-// node-canvas gives perfect Indic shaping via CoreText (macOS) / Cairo+HarfBuzz (Linux)
-// Graceful fallback if native libs are missing on the host
-let createCanvas: any = null
-let registerFont: any = null
+// Use @napi-rs/canvas — ships pre-built binaries for Linux/macOS/Windows, no compilation needed.
+// Falls back gracefully if somehow unavailable.
+let napiCreateCanvas: any = null
+let napiGlobalFonts: any = null
 try {
-  const canvasModule = require('canvas')
-  createCanvas = canvasModule.createCanvas
-  registerFont = canvasModule.registerFont
-  console.log('✓ node-canvas loaded — using canvas renderer for complex scripts')
+  const napiCanvas = require('@napi-rs/canvas')
+  napiCreateCanvas = napiCanvas.createCanvas
+  napiGlobalFonts = napiCanvas.GlobalFonts
+  console.log('✓ @napi-rs/canvas loaded — perfect Indic script rendering enabled')
 } catch (e) {
-  console.warn('⚠ node-canvas not available — complex scripts will use pdf-lib fallback')
+  console.warn('⚠ @napi-rs/canvas not available — complex scripts will use pdf-lib fallback')
 }
 
 // Fonts will be copied to dist-server/fonts/ during build
@@ -112,12 +112,13 @@ const COMPLEX_SCRIPTS = new Set([
   'thai','lao','tibetan','meetei','thaana','ethiopic',
 ])
 
-// Track which fonts have been registered with node-canvas
+// Track which fonts have been registered with @napi-rs/canvas
 const canvasFontsRegistered = new Set<string>()
 
 /**
- * Render text to a PNG buffer using node-canvas (CoreText on macOS / Cairo+HarfBuzz on Linux).
- * Auto-shrinks font size until ALL text fits within slotW x slotH. No overflow, no overlap.
+ * Render text to a PNG buffer using @napi-rs/canvas.
+ * Ships pre-built binaries for Linux/macOS — works on Azure without libcairo.
+ * Auto-shrinks font until all text fits inside slotW x slotH.
  */
 function renderTextToImage(
   text: string,
@@ -130,14 +131,16 @@ function renderTextToImage(
   colorG: number,
   colorB: number
 ): Buffer | null {
-  if (!createCanvas || !registerFont) return null
-  // Register the font once
+  if (!napiCreateCanvas || !napiGlobalFonts) return null
+
+  // Register the font once with GlobalFonts
   if (!canvasFontsRegistered.has(fontFamily)) {
     try {
-      registerFont(fontPath, { family: fontFamily })
+      napiGlobalFonts.registerFromPath(fontPath, fontFamily)
       canvasFontsRegistered.add(fontFamily)
     } catch (e) {
       console.warn(`canvas registerFont failed for ${fontFamily}:`, e)
+      return null
     }
   }
 
@@ -151,7 +154,7 @@ function renderTextToImage(
   const availH = h - padTop - padBottom
 
   // Measurement canvas (no drawing — just measure)
-  const measureCanvas = createCanvas(w, h)
+  const measureCanvas = napiCreateCanvas(w, h)
   const mCtx = measureCanvas.getContext('2d')
   const words = text.split(/\s+/).filter(Boolean)
 
@@ -173,10 +176,10 @@ function renderTextToImage(
     return { lines, totalH: lines.length * lineH }
   }
 
-  // Auto-shrink: start at requested size, reduce by 5% each step until it fits
+  // Auto-shrink: reduce by 8% each step until fits
   let fs = fontSize * scale
   let wrapped = wrapText(fs)
-  while ((wrapped.totalH > availH || wrapped.lines.some(l => {
+  while ((wrapped.totalH > availH || wrapped.lines.some((l: string) => {
     mCtx.font = `${fs}px "${fontFamily}"`
     return mCtx.measureText(l).width > availW
   })) && fs > 4 * scale) {
@@ -185,7 +188,7 @@ function renderTextToImage(
   }
 
   // Draw onto actual canvas
-  const canvas = createCanvas(w, h)
+  const canvas = napiCreateCanvas(w, h)
   const ctx = canvas.getContext('2d')
   ctx.clearRect(0, 0, w, h)
   ctx.font = `${fs}px "${fontFamily}"`
@@ -193,8 +196,7 @@ function renderTextToImage(
   ctx.textBaseline = 'alphabetic'
 
   const lineH = fs * 1.3
-  wrapped.lines.forEach((line, i) => {
-    // baseline = padTop + ascender (≈0.8 of font size) + subsequent line offsets
+  wrapped.lines.forEach((line: string, i: number) => {
     const y = padTop + Math.ceil(fs * 0.82) + i * lineH
     ctx.fillText(line, padX, y)
   })
@@ -344,7 +346,7 @@ export async function createTranslatedPDF(
         text, complexFontFamily, complexFontPath,
         fontSize, slotW, slotH, colorR, colorG, colorB
       )
-      if (!pngBuf) return // canvas not available — caller will use pdf-lib fallback
+      if (!pngBuf) return
       const img = await pdfDoc.embedPng(pngBuf)
       page.drawImage(img, { x: slotX, y: slotY, width: slotW, height: slotH })
     } catch (e) {
