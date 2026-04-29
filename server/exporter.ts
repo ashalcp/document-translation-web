@@ -29,9 +29,9 @@ const FONT_ETHIOPIC     = path.join(__dirname, 'fonts/NotoSansEthiopic.ttf')
 const FONT_ORIYA        = path.join(__dirname, 'fonts/NotoSansOriya.ttf')
 const FONT_MEETEI       = path.join(__dirname, 'fonts/NotoSansMeeteiMayek.ttf')
 const FONT_THAANA       = path.join(__dirname, 'fonts/NotoSansThaana.ttf')
-const FONT_CJK_SC       = path.join(__dirname, 'fonts/NotoSansSC.ttf')   // Chinese Simplified + Traditional
-const FONT_JP           = path.join(__dirname, 'fonts/NotoSansJP.ttf')   // Japanese
-const FONT_KR           = path.join(__dirname, 'fonts/NotoSansKR.ttf')   // Korean
+const FONT_CJK_SC       = path.join(__dirname, 'fonts/NotoSansSC.otf')   // Chinese Simplified + Traditional
+const FONT_JP           = path.join(__dirname, 'fonts/NotoSansJP.otf')   // Japanese
+const FONT_KR           = path.join(__dirname, 'fonts/NotoSansKR.otf')   // Korean
 
 // Unicode range → font key
 type ScriptKey =
