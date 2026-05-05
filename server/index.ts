@@ -10,6 +10,7 @@ import { getSettings, saveSettings } from './settings'
 import { runOCR } from './ocr-service'
 import { translateParagraphs, getSupportedLanguages } from './translator-service'
 import { exportToPDF, exportToWord, exportToJSON, createTranslatedPDF } from './exporter'
+import { simpleTranslateRouter } from './simple-translate'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -310,6 +311,9 @@ app.post('/api/file-preview', upload.single('file'), (req, res) => {
   res.setHeader('Content-Type', 'application/pdf')
   res.send(data)
 })
+
+// ─── Simple Translate (Azure Document Translation Batch API) ─────────────────
+app.use('/api/simple-translate', simpleTranslateRouter)
 
 // ─── Serve React frontend (production build) ───────────────────────────────
 const distPath = path.join(__dirname, '../dist')

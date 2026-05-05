@@ -4,6 +4,7 @@ import JobDetailView from './components/JobDetailView'
 import SettingsModal from './components/SettingsModal'
 import ProgressBar from './components/ProgressBar'
 import LoginPage from './pages/LoginPage'
+import SimpleTranslatePage from './pages/SimpleTranslatePage'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   constructor(props: any) { super(props); this.state = { error: null } }
@@ -41,6 +42,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loginError, setLoginError] = useState<string>()
   const [authChecked, setAuthChecked] = useState(false)
+  const [simpleTranslateOpen, setSimpleTranslateOpen] = useState(false)
   const activeJob = jobs.find(j => j.id === activeJobId) ?? null
 
   // Check if auth is required on mount
@@ -149,7 +151,21 @@ export default function App() {
   return (
     <div className="h-screen bg-gray-950 flex flex-col text-white overflow-hidden">
       <nav className="bg-gray-900 border-b border-gray-800 px-5 py-2 flex items-center justify-between flex-shrink-0">
-        <span className="font-bold text-blue-400 text-lg">📝 DocTranslate</span>
+        <div className="flex items-center gap-3">
+          <span className="font-bold text-blue-400 text-lg">📝 DocTranslate</span>
+          <div className="flex bg-gray-800 rounded-lg p-0.5 gap-0.5">
+            <button
+              onClick={() => setSimpleTranslateOpen(false)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${!simpleTranslateOpen ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+              📄 PDF OCR
+            </button>
+            <button
+              onClick={() => setSimpleTranslateOpen(true)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${simpleTranslateOpen ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+              🌐 Simple Translate
+            </button>
+          </div>
+        </div>
         <button onClick={() => setSettingsOpen(true)}
           className="text-gray-400 hover:text-white text-sm px-3 py-1.5 rounded-lg hover:bg-gray-800">
           ⚙️ Settings
@@ -157,6 +173,11 @@ export default function App() {
       </nav>
 
       <div className="flex flex-1 overflow-hidden">
+        {/* Simple Translate tab — full-width, no sidebar */}
+        {simpleTranslateOpen ? (
+          <SimpleTranslatePage />
+        ) : (
+        <>
         {/* Sidebar */}
         <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
           <div className="p-3 border-b border-gray-800">
@@ -224,6 +245,8 @@ export default function App() {
             )}
           </ErrorBoundary>
         </main>
+        </>
+        )}
       </div>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
